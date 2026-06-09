@@ -16,8 +16,8 @@
 
 import httpx
 import json
-import os
 from urllib.parse import urlencode
+from ..config import UPLOADS_DIR
 
 API = "https://api.linkedin.com/v2"
 
@@ -57,7 +57,7 @@ def get_profile(access_token: str) -> dict:
 def post_to_linkedin(credentials: dict, text: str, media_paths: list[str]) -> str:
     access_token = credentials["access_token"]
     person_urn = f"urn:li:person:{credentials['person_id']}"
-    uploads_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+
 
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -86,7 +86,7 @@ def post_to_linkedin(credentials: dict, text: str, media_paths: list[str]) -> st
                 upload_url = reg["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
                 asset_urn = reg["value"]["asset"]
 
-                full_path = os.path.join(uploads_dir, filename)
+                full_path = UPLOADS_DIR / filename
                 with open(full_path, "rb") as f:
                     put_r = c.put(upload_url, content=f.read(), headers={"Authorization": f"Bearer {access_token}"})
                 put_r.raise_for_status()

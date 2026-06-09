@@ -21,9 +21,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
-_APP_DIR = Path(__file__).resolve().parent
-load_dotenv(_APP_DIR.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+from .config import UPLOADS_DIR
 from .database import engine, Base
 from .models import *  # noqa: register all models
 from .scheduler import scheduler
@@ -55,6 +55,5 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(posts.router, prefix="/api")
 
 # Serve uploaded media at /media/filename (no /api prefix, so meta callbacks can reach it)
-uploads_dir = _APP_DIR.parent / "uploads"
-uploads_dir.mkdir(exist_ok=True)
-app.mount("/media", StaticFiles(directory=str(uploads_dir)), name="media")
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(UPLOADS_DIR)), name="media")

@@ -15,13 +15,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-import os
 import shutil
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
+from ..config import UPLOADS_DIR
 from ..database import get_db
 from ..models import Post, PostChannel, Channel
 from ..schemas import PostCreate, PostRead, PostUpdate
@@ -29,8 +29,7 @@ from ..scheduler import publish_post, schedule_post, cancel_post
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov"}
 
@@ -41,7 +40,7 @@ async def upload_media(file: UploadFile = File(...)):
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"File type {ext} not allowed")
     filename = f"{uuid.uuid4()}{ext}"
-    dest = os.path.join(UPLOADS_DIR, filename)
+    dest = UPLOADS_DIR / filename
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
     return {"filename": filename}
@@ -49,8 +48,8 @@ async def upload_media(file: UploadFile = File(...)):
 
 @router.get("/media/{filename}")
 def serve_media(filename: str):
-    path = os.path.join(UPLOADS_DIR, filename)
-    if not os.path.exists(path):
+    path = UPLOADS_DIR / filename
+    if not path.exists():
         raise HTTPException(404, "File not found")
     return FileResponse(path)
 

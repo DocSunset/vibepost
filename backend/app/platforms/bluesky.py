@@ -14,9 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import json
-import os
 from atproto import Client
+from ..config import UPLOADS_DIR
 
 
 def post_to_bluesky(credentials: dict, text: str, media_paths: list[str]) -> str:
@@ -26,7 +25,7 @@ def post_to_bluesky(credentials: dict, text: str, media_paths: list[str]) -> str
     if media_paths:
         images = []
         for path in media_paths[:4]:
-            full_path = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", path)
+            full_path = UPLOADS_DIR / path
             with open(full_path, "rb") as f:
                 data = f.read()
             ext = path.rsplit(".", 1)[-1].lower()

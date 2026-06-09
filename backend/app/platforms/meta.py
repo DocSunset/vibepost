@@ -16,8 +16,8 @@
 
 import httpx
 import json
-import os
 from urllib.parse import urlencode
+from ..config import UPLOADS_DIR
 
 GRAPH = "https://graph.facebook.com/v19.0"
 THREADS_GRAPH = "https://graph.threads.net/v1.0"
@@ -105,13 +105,13 @@ def exchange_threads_code(code: str, client_id: str, client_secret: str, redirec
 def post_to_facebook(credentials: dict, text: str, media_paths: list[str]) -> str:
     page_id = credentials["page_id"]
     page_token = credentials["page_token"]
-    uploads_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+
 
     with httpx.Client() as c:
         if media_paths:
             photo_ids = []
             for filename in media_paths:
-                full_path = os.path.join(uploads_dir, filename)
+                full_path = UPLOADS_DIR / filename
                 with open(full_path, "rb") as f:
                     r = c.post(f"{GRAPH}/{page_id}/photos", data={
                         "access_token": page_token,

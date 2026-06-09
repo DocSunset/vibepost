@@ -14,23 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from .config import DB_PATH
+import os
+from pathlib import Path
 
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+_repo = Path(__file__).resolve().parent.parent
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+DB_PATH = Path(os.environ.get("DB_PATH", str(_repo / "vibepost.db")))
+UPLOADS_DIR = Path(os.environ.get("UPLOADS_DIR", str(_repo / "uploads")))

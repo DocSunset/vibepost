@@ -1,0 +1,34 @@
+# vibepost - social media scheduling and posting tool
+# Copyright (C) 2026  Travis West
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+services:
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    # Load API keys and OAuth credentials from backend/.env
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DB_PATH: /data/vibepost.db
+      UPLOADS_DIR: /data/uploads
+      # Set these to your public domain when deploying:
+      #   OAUTH_CALLBACK_BASE: https://your-domain.com
+      #   FRONTEND_URL: https://your-domain.com
+    volumes:
+      - vibepost_data:/data
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      - api
+
+volumes:
+  vibepost_data:
+    driver: local
