@@ -1,0 +1,8 @@
+- two seperate things that I manage through this poster
+- create a post
+- ability to preview the post
+- can post to insta, facebook, bluesky, threads, linkedin
+- tick a box when you author to select which channels to post on
+- media, or text, or both
+- schedule it
+- view calendar
