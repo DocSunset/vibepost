@@ -457,10 +457,14 @@ consent for each operation.
 
 ## Open Questions (Unresolved)
 
-- Should users bring their own Meta/LinkedIn developer app credentials, or does
-  vibepost register one shared app? The shared-app approach is much smoother UX
-  but requires Meta app review (a substantial process) and exposes vibepost's
-  credentials to regulatory risk if a user violates platform ToS.
+- **Meta/LinkedIn credentials — resolved for beta, open for production:** during
+  development and closed beta, each user creates their own Meta developer app and
+  enters their own App ID and Secret in the vibepost settings screen. This avoids
+  Meta app review entirely since each user is only ever accessing their own
+  accounts. The existing settings UI already supports this flow. Switch to a single
+  shared vibepost app (with proper Meta review) when opening to the public — review
+  requires a working demo and can take several weeks, so start the submission
+  process well before the public launch date.
 - Should media be deleted from R2 after a successful post, or retained for the
   user's own archive? Configurable per user is the right answer but adds surface
   area.
