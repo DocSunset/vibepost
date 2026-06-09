@@ -44,7 +44,7 @@ with query string parameters work fine.
 | Instagram | Yes (API requirement) | Presigned R2 URL, generated ~2–5 min before post time |
 | Threads (image) | Yes | Same as Instagram |
 | Threads (text) | No | No media involved |
-| Facebook | No | Backend fetches from private R2, uploads binary directly |
+| Facebook | Yes (URL param) | Presigned R2 URL passed as `?url=` parameter; Facebook fetches directly from R2 |
 | Bluesky | No | Backend fetches from private R2, uploads blob directly |
 | LinkedIn | No | Backend fetches from private R2, uploads via presigned PUT flow |
 
