@@ -14,6 +14,7 @@ Start here.
 | **Supabase** | Postgres database, user auth (JWTs), encrypted secrets vault. |
 | **Cloudflare R2** | Object storage for post media. Zero egress cost. Private bucket. |
 | **Fly.io** | Runs the FastAPI backend. Thin: handles OAuth exchanges, presigned URL generation, scheduling, and platform API dispatch. Never touches media bytes except for Bluesky and LinkedIn scheduled posts (see Media Handling). |
+| **Stripe** | Billing and subscription management. Hosts the payment form — we never see card data. |
 
 ---
 
@@ -371,6 +372,86 @@ Everything deployable and manageable from a terminal:
 | `supabase` | Run migrations, manage RLS policies, local dev stack, deploy Edge Functions |
 | `wrangler` | Deploy Cloudflare Pages frontend, manage R2 buckets, set R2 CORS policy |
 | `git push` | Triggers CI/CD for all three services if configured |
+
+---
+
+## Billing (Stripe)
+
+We never handle card data. Stripe hosts the payment form on their own domain;
+we are not in scope for PCI DSS card data requirements.
+
+**Checkout flow:**
+
+```
+User clicks Upgrade
+  → Frontend: POST /api/billing/checkout
+  → Backend: creates Stripe Checkout Session via Stripe API → gets back a URL
+  → Backend: returns URL to frontend
+  → Frontend: redirects to checkout.stripe.com/...
+  → User enters card details on Stripe's page (we never see these)
+  → Stripe: redirects back to vibepost.com/welcome on success
+```
+
+**How we learn about payment events:**
+
+Stripe sends a signed webhook (`POST /api/billing/webhook`) for every billing
+event: subscription created, renewed, payment failed, cancelled, etc. The backend
+verifies the webhook signature (using a Fly.io secret) and updates the user's
+record accordingly. We react to events; we never poll Stripe.
+
+**What we store in our DB:**
+
+- `stripe_customer_id` — links our user to their Stripe record
+- `subscription_status` — `active`, `trialing`, `past_due`, `canceled`
+- Plan name / tier if we have multiple
+
+Nothing else. No card numbers, expiry dates, or billing addresses.
+
+**Paywall enforcement:**
+
+Every gated API endpoint checks `subscription_status IN ('active', 'trialing')`.
+When a payment lapses, Stripe fires a webhook, we flip the status, and the gates
+close automatically without any manual intervention.
+
+---
+
+## GDPR
+
+GDPR applies if any users are in the EU. For a public SaaS, assume yes.
+
+**Personal data we hold:**
+
+- Email address (Supabase Auth)
+- Social media account names and platform user IDs (`channels` table)
+- Post text and media (Postgres + R2)
+- IP addresses and access logs (held by Fly.io / Cloudflare — we are responsible
+  for them as a data controller even though we don't see them directly)
+
+**Lawful basis:** performance of a contract. We hold data to provide the service
+the user signed up for. This covers the core processing without needing explicit
+consent for each operation.
+
+**Required in practice:**
+
+- **Privacy policy** — document what we collect, why, which third-party processors
+  we use (Supabase, Stripe, Cloudflare, Fly.io, the social platforms), and
+  retention periods. Non-negotiable.
+- **Data Processing Agreements** — Supabase, Stripe, Cloudflare, and Fly.io all
+  offer standard DPAs. Accept them (usually a checkbox in the account settings).
+  They commit to handling our users' data under GDPR rules.
+- **Right to erasure** — when a user deletes their account: cascade-delete all
+  Postgres rows, purge R2 objects, delete all Vault secrets, initiate Stripe
+  customer deletion. This must actually work in the code.
+- **Data residency** — pick a Supabase region from the start. EU region simplifies
+  compliance for EU users; migrating later is painful.
+
+**What we probably don't need:**
+
+- Cookie consent banner — only required for tracking/analytics cookies. If we
+  don't run ad pixels or third-party analytics, we likely have no consent-requiring
+  cookies.
+- A Data Protection Officer — only mandatory for large-scale or sensitive
+  processing.
 
 ---
 
