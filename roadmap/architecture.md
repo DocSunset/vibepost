@@ -29,10 +29,20 @@ signed JWT on login. That JWT is sent as a Bearer token on every API request.
 The FastAPI backend verifies it using Supabase's JWT secret (an env var) and
 extracts `user_id` from the token claims. No session table. No cookies. Stateless.
 
-Supabase Auth supports:
-- Email + password with verification and password reset out of the box
-- Social login (Google, GitHub, etc.) — useful for reducing signup friction
-- Magic links
+**Auth method: passkeys as primary, email as complement.**
+
+Passkeys (WebAuthn) are the primary authentication method. The user's private key
+never leaves their device; we store only the public key. This gives us phishing
+resistance, inherent multi-factor auth (device possession + biometric/PIN), and
+no password to store, breach, or reset. Supabase Auth supports passkeys natively.
+
+Email is collected as a complement — not as a login credential, but for:
+- Account recovery if the user loses access to all their passkey-synced devices
+- Transactional notifications: post failures, token expiry, channel disconnected
+- Contacting users about security issues or service changes
+
+Email is never used for marketing. It is deleted on account deletion. See
+`privacy.md` for the full personal data strategy.
 
 The `user_id` from the verified JWT is the key that scopes every database query.
 It is threaded into every route handler and used in all RLS policies.
