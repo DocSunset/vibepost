@@ -129,23 +129,15 @@ is the trust boundary and it is enforced by the browser.
   requests surfaces what the API needs to expose next.
 - Can two users share an agent session? (Pair programming for plugin authoring.)
   Interesting multi-player angle, probably out of scope for a long time.
-- Local model vs API model for the agent: a local model running in the browser
-  via WebAssembly would make the free tier genuinely serverless for AI too —
-  no API key, no backend, no cost. This is not hypothetical:
+- Local model vs API model for the agent: in-browser local models (wllama,
+  transformers.js, llama.cpp WASM) are technically real but tested against a
+  desktop machine in June 2026 and found to be several years from being
+  adequately capable for useful plugin authoring tasks. The quality gap between
+  browser-feasible model sizes and frontier models is too large to bridge with
+  quantisation alone at this point.
 
-  - **wllama** — a well-maintained WASM build of llama.cpp with a JavaScript API,
-    runs inference in a Web Worker so it doesn't block the UI
-  - **transformers.js** — Hugging Face's library for ONNX-format models in the
-    browser, broader model support, actively maintained, WebGPU support
-  - **llama.cpp's own WASM target** — exists in the main repo, less polished
-    as a library
-
-  The practical constraint is model size. 7B Q4 is ~4GB — too large for most
-  browser contexts. But 1B–3B models at aggressive quantisation are 500MB–1GB,
-  and models in that range have improved dramatically: Phi-4 Mini, Gemma 3 1B,
-  Llama 3.2 1B are all plausible for constrained tasks like "write a React
-  component given an API schema." WebGPU (now broadly available) makes inference
-  interactive on most laptops and phones for models this size.
-
-  Not something to build around today. Absolutely something to keep the
-  architecture open to — the trajectory is clear and fast.
+  **Decision: use frontier models via the backend for the foreseeable future.**
+  BYOK (user supplies Anthropic API key, requests go browser-to-Anthropic) covers
+  the privacy-maximalist case without requiring local inference. Revisit when
+  models in the 3B range are meaningfully competitive with today's frontier —
+  the architecture should remain open to it but we are not building toward it.
