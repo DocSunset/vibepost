@@ -15,11 +15,49 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import axios from "axios";
-import type { Profile, Channel, Post, AppSettings } from "./types";
+import type { Profile, Channel, Post, AppSettings, User, Invite } from "./types";
 
 const http = axios.create({ baseURL: "/api" });
 
+// Called when any request comes back 401 — the app swaps to the auth screen.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn;
+}
+
+http.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    const status = error.response?.status;
+    const url: string = error.config?.url ?? "";
+    // Auth endpoints handle their own 401s (wrong password etc.)
+    if (status === 401 && !url.startsWith("/account/")) {
+      onUnauthorized?.();
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const api = {
+  account: {
+    me: () => http.get<User>("/account/me").then((r) => r.data),
+    signup: (invite_code: string, email: string, password: string) =>
+      http.post<User>("/account/signup", { invite_code, email, password }).then((r) => r.data),
+    login: (email: string, password: string) =>
+      http.post<User>("/account/login", { email, password }).then((r) => r.data),
+    logout: () => http.post("/account/logout"),
+    changePassword: (current_password: string, new_password: string) =>
+      http.post("/account/change-password", { current_password, new_password }),
+    exportData: () => http.get("/account/export").then((r) => r.data),
+    deleteAccount: () => http.delete("/account"),
+    invites: {
+      list: () => http.get<Invite[]>("/account/invites").then((r) => r.data),
+      create: (note: string) =>
+        http.post<{ token: string; expires_in_days: number }>("/account/invites", { note }).then((r) => r.data),
+      revoke: (id: number) => http.post(`/account/invites/${id}/revoke`),
+    },
+  },
+
   profiles: {
     list: () => http.get<Profile[]>("/profiles/").then((r) => r.data),
     create: (name: string, avatar_color: string) =>

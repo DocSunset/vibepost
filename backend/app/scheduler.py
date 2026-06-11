@@ -20,8 +20,9 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy.orm import Session
+from .config import OAUTH_CALLBACK_BASE
 from .database import SessionLocal
-from .models import Post, PostChannel, Channel, AppSetting
+from .models import Post, PostChannel, Channel, Profile, UserSetting
 
 log = logging.getLogger(__name__)
 
@@ -31,8 +32,12 @@ scheduler = BackgroundScheduler(
 )
 
 
-def _get_setting(db: Session, key: str) -> str | None:
-    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+def _get_user_setting(db: Session, user_id: int | None, key: str) -> str | None:
+    if user_id is None:
+        return None
+    row = db.query(UserSetting).filter(
+        UserSetting.user_id == user_id, UserSetting.key == key
+    ).first()
     return row.value if row else None
 
 
@@ -47,6 +52,9 @@ def publish_post(post_id: int):
         media_paths = json.loads(post.media_paths or "[]")
         any_failure = False
 
+        owner = db.query(Profile).filter(Profile.id == post.profile_id).first()
+        owner_user_id = owner.user_id if owner else None
+
         for pc in post.post_channels:
             if pc.status == "published":
                 continue
@@ -54,7 +62,7 @@ def publish_post(post_id: int):
             creds = json.loads(channel.credentials or "{}")
 
             try:
-                platform_post_id = _dispatch(channel.platform, creds, post.text, media_paths, db)
+                platform_post_id = _dispatch(channel.platform, creds, post.text, media_paths, db, owner_user_id)
                 pc.status = "published"
                 pc.platform_post_id = platform_post_id
                 pc.published_at = datetime.now(timezone.utc)
@@ -78,8 +86,8 @@ def publish_post(post_id: int):
         db.close()
 
 
-def _dispatch(platform: str, creds: dict, text: str, media_paths: list[str], db: Session) -> str:
-    public_base = _get_setting(db, "public_media_base_url") or "http://localhost:8000"
+def _dispatch(platform: str, creds: dict, text: str, media_paths: list[str], db: Session, user_id: int | None) -> str:
+    public_base = _get_user_setting(db, user_id, "public_media_base_url") or OAUTH_CALLBACK_BASE
 
     if platform == "bluesky":
         from .platforms.bluesky import post_to_bluesky
@@ -104,7 +112,34 @@ def _dispatch(platform: str, creds: dict, text: str, media_paths: list[str], db:
     raise ValueError(f"Unknown platform: {platform}")
 
 
+def restore_jobs():
+    """Re-create scheduler jobs after a restart.
+
+    Jobs live in memory, so a deploy or crash loses them; the posts table is
+    the source of truth. Future posts are re-scheduled; overdue ones are
+    published immediately (better late than silently never).
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        pending = db.query(Post).filter(
+            Post.status == "scheduled", Post.scheduled_at.isnot(None)
+        ).all()
+        for post in pending:
+            if post.scheduled_at > now:
+                schedule_post(post.id, post.scheduled_at)
+            else:
+                log.warning("Post %d was due at %s; publishing now", post.id, post.scheduled_at)
+                scheduler.add_job(publish_post, args=[post.id], id=f"post_{post.id}", replace_existing=True)
+    finally:
+        db.close()
+
+
 def schedule_post(post_id: int, run_at: datetime):
+    # Stored datetimes are naive UTC; APScheduler would interpret a naive
+    # datetime in the server's local timezone, so mark it explicitly.
+    if run_at.tzinfo is None:
+        run_at = run_at.replace(tzinfo=timezone.utc)
     job_id = f"post_{post_id}"
     if scheduler.get_job(job_id):
         scheduler.remove_job(job_id)

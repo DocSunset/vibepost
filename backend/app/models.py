@@ -14,18 +14,58 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from .database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    is_admin = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
+    settings = relationship("UserSetting", back_populates="user", cascade="all, delete-orphan")
+
+
+class InviteToken(Base):
+    __tablename__ = "invite_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    # Only a SHA-256 hash is stored; the token itself is shown once at creation.
+    token_hash = Column(String, unique=True, nullable=False, index=True)
+    note = Column(String, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=True)
+    used_at = Column(DateTime, nullable=True)
+    used_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    revoked = Column(Boolean, default=False, nullable=False)
+
+
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    key = Column(String, nullable=False)
+    value = Column(Text)
+
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_setting"),)
+
+    user = relationship("User", back_populates="settings")
+
+
 class Profile(Base):
     __tablename__ = "profiles"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     avatar_color = Column(String, default="#6366f1")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="profiles")
 
     channels = relationship("Channel", back_populates="profile", cascade="all, delete-orphan")
     posts = relationship("Post", back_populates="profile", cascade="all, delete-orphan")
@@ -76,7 +116,5 @@ class PostChannel(Base):
     channel = relationship("Channel", back_populates="post_channels")
 
 
-class AppSetting(Base):
-    __tablename__ = "app_settings"
-    key = Column(String, primary_key=True)
-    value = Column(Text)
+# Note: the legacy single-tenant `app_settings` table was replaced by
+# `user_settings`; existing databases are migrated at startup (see database.py).

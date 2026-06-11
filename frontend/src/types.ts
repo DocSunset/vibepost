@@ -62,6 +62,27 @@ export interface AppSettings {
   linkedin_client_id: string;
   linkedin_client_secret: string;
   public_media_base_url: string;
+  oauth_redirect_uris?: {
+    meta: string;
+    threads: string;
+    linkedin: string;
+  };
+}
+
+export interface User {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+}
+
+export interface Invite {
+  id: number;
+  note: string;
+  created_at: string;
+  expires_at: string | null;
+  used_at: string | null;
+  revoked: boolean;
 }
 
 export type View = "compose" | "calendar" | "posts" | "settings";

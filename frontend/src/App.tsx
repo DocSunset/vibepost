@@ -15,12 +15,15 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "./api";
-import type { Profile, Channel, View } from "./types";
+import { api, setUnauthorizedHandler } from "./api";
+import type { Profile, Channel, User, View } from "./types";
 import Composer from "./components/Composer";
 import CalendarView from "./components/Calendar";
 import PostList from "./components/PostList";
 import Settings from "./components/Settings";
+import AuthScreen from "./components/AuthScreen";
+import Onboarding from "./components/Onboarding";
+import PrivacyPolicy from "./components/PrivacyPolicy";
 
 const PLATFORM_ICONS: Record<string, string> = {
   instagram: "📷",
@@ -38,6 +41,9 @@ const NAV: { id: View; label: string; icon: string }[] = [
 ];
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -57,6 +63,7 @@ export default function App() {
     if (list.length > 0 && activeProfileId === null) {
       setActiveProfileId(list[0].id);
     }
+    return list;
   }, [activeProfileId]);
 
   const loadChannels = useCallback(async () => {
@@ -65,9 +72,28 @@ export default function App() {
     setChannels(list);
   }, [activeProfileId]);
 
+  // Session check on load; any later 401 drops back to the auth screen
   useEffect(() => {
-    loadProfiles();
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      setProfiles([]);
+      setChannels([]);
+      setActiveProfileId(null);
+    });
+    api.account
+      .me()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    loadProfiles().then((list) => {
+      // A brand-new account (or one that never finished setup) gets the wizard
+      if (list.length === 0) setOnboarding(true);
+    });
+  }, [user]);
 
   useEffect(() => {
     loadChannels();
@@ -80,16 +106,50 @@ export default function App() {
     const error = params.get("error");
     if (success) {
       showToast(`Connected ${success} successfully!`);
-      window.history.replaceState({}, "", window.location.pathname);
+      window.history.replaceState({}, "", "/");
       setView("settings");
       loadChannels();
     }
     if (error) {
-      showToast(`Connection failed: ${error}`, "err");
-      window.history.replaceState({}, "", window.location.pathname);
+      showToast(`Connection failed: ${error.split("_").join(" ")}`, "err");
+      window.history.replaceState({}, "", "/");
       setView("settings");
     }
   }, []);
+
+  if (window.location.pathname === "/privacy") {
+    return <PrivacyPolicy />;
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-400 text-sm">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AuthScreen
+        onAuthed={(u, isNew) => {
+          setUser(u);
+          if (isNew) setOnboarding(true);
+        }}
+      />
+    );
+  }
+
+  if (onboarding) {
+    return (
+      <Onboarding
+        onDone={() => {
+          setOnboarding(false);
+          loadProfiles();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -164,6 +224,12 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <div className="px-4 py-3 border-t border-gray-700">
+          <a href="/privacy" className="text-[11px] text-gray-500 hover:text-gray-300">
+            Privacy
+          </a>
+        </div>
       </aside>
 
       {/* Main */}
@@ -208,11 +274,19 @@ export default function App() {
             )}
             {view === "settings" && (
               <Settings
+                user={user}
                 profiles={profiles}
                 activeProfileId={activeProfileId}
                 channels={channels}
                 onProfilesChanged={loadProfiles}
                 onChannelsChanged={loadChannels}
+                onLoggedOut={() => {
+                  setUser(null);
+                  setProfiles([]);
+                  setChannels([]);
+                  setActiveProfileId(null);
+                  setView("compose");
+                }}
                 onError={(e) => showToast(e, "err")}
                 onSuccess={(m) => showToast(m)}
               />

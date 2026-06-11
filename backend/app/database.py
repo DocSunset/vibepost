@@ -34,3 +34,19 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def run_migrations():
+    """Additive schema migrations for pre-auth databases.
+
+    create_all() only creates missing tables; it never adds columns to
+    existing ones. The only column added since the single-tenant version is
+    profiles.user_id. Profiles left with user_id NULL are invisible until
+    claimed with: python -m app.manage claim-orphans <email>
+    """
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(profiles)"))]
+        if cols and "user_id" not in cols:
+            conn.execute(text("ALTER TABLE profiles ADD COLUMN user_id INTEGER REFERENCES users(id)"))

@@ -15,15 +15,18 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { useState, useEffect } from "react";
-import type { Profile, Channel, AppSettings } from "../types";
+import type { Profile, Channel, AppSettings, User } from "../types";
 import { api } from "../api";
+import AccountSettings from "./AccountSettings";
 
 interface Props {
+  user: User;
   profiles: Profile[];
   activeProfileId: number | null;
   channels: Channel[];
   onProfilesChanged: () => void;
   onChannelsChanged: () => void;
+  onLoggedOut: () => void;
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
 }
@@ -53,11 +56,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function Settings({
+  user,
   profiles,
   activeProfileId,
   channels,
   onProfilesChanged,
   onChannelsChanged,
+  onLoggedOut,
   onError,
   onSuccess,
 }: Props) {
@@ -173,6 +178,13 @@ export default function Settings({
     <div className="max-w-2xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
 
+      <AccountSettings
+        user={user}
+        onLoggedOut={onLoggedOut}
+        onError={onError}
+        onSuccess={onSuccess}
+      />
+
       {/* Profiles */}
       <Section title="Profiles">
         <div className="space-y-3 mb-5">
@@ -240,7 +252,8 @@ export default function Settings({
       {/* App credentials */}
       <Section title="App Credentials">
         <p className="text-xs text-gray-500 mb-4">
-          Enter your developer app credentials. These are stored locally. You need to create developer apps at{" "}
+          Enter your developer app credentials. These are stored in your account and visible only
+          to you. You need to create developer apps at{" "}
           <span className="font-medium">developers.facebook.com</span> (for Meta platforms) and{" "}
           <span className="font-medium">developer.linkedin.com</span>.
         </p>
@@ -347,7 +360,7 @@ export default function Settings({
               <p className="text-xs text-gray-400 mb-2">
                 Requires a Meta Developer App with <code>pages_manage_posts</code> and{" "}
                 <code>instagram_content_publish</code> permissions. Set your OAuth redirect URI to{" "}
-                <code>http://localhost:8000/api/auth/meta/callback</code>.
+                <code>{settings.oauth_redirect_uris?.meta ?? "…"}</code>.
               </p>
               <button
                 onClick={() => handleOAuth("meta")}
@@ -366,7 +379,7 @@ export default function Settings({
               <p className="text-xs font-medium text-gray-500 mb-2">🧵 Threads</p>
               <p className="text-xs text-gray-400 mb-2">
                 Requires a Threads API app (can be same as Meta app or separate). Set redirect URI to{" "}
-                <code>http://localhost:8000/api/auth/threads/callback</code>.
+                <code>{settings.oauth_redirect_uris?.threads ?? "…"}</code>.
               </p>
               <button
                 onClick={() => handleOAuth("threads")}
@@ -382,7 +395,7 @@ export default function Settings({
               <p className="text-xs font-medium text-gray-500 mb-2">💼 LinkedIn</p>
               <p className="text-xs text-gray-400 mb-2">
                 Requires a LinkedIn Developer App with <code>w_member_social</code> scope. Set redirect URI to{" "}
-                <code>http://localhost:8000/api/auth/linkedin/callback</code>.
+                <code>{settings.oauth_redirect_uris?.linkedin ?? "…"}</code>.
               </p>
               <button
                 onClick={() => handleOAuth("linkedin")}

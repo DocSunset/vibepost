@@ -94,3 +94,33 @@ class BlueskyConnectRequest(BaseModel):
 
 class AppSettingUpdate(BaseModel):
     value: str
+
+
+class SignupRequest(BaseModel):
+    invite_code: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class UserRead(BaseModel):
+    id: int
+    email: str
+    is_admin: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InviteCreateRequest(BaseModel):
+    note: str = ""
+    expires_in_days: Optional[int] = None

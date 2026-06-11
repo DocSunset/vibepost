@@ -94,7 +94,8 @@ export default function Composer({ profile, channels, onPosted, onScheduled, onE
         text,
         media_paths: mediaFiles.map((f) => f.filename),
         channel_ids: Array.from(selectedChannels),
-        scheduled_at: scheduleMode === "later" && scheduledAt ? scheduledAt : null,
+        // datetime-local gives naive local time; send unambiguous UTC to the server
+        scheduled_at: scheduleMode === "later" && scheduledAt ? new Date(scheduledAt).toISOString() : null,
       });
 
       if (scheduleMode === "now") {
