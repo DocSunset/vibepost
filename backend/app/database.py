@@ -46,7 +46,13 @@ def run_migrations():
     """
     from sqlalchemy import text
 
+    additions = [
+        ("profiles", "user_id", "INTEGER REFERENCES users(id)"),
+        ("users", "session_epoch", "INTEGER NOT NULL DEFAULT 0"),
+        ("invite_tokens", "failed_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ]
     with engine.begin() as conn:
-        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(profiles)"))]
-        if cols and "user_id" not in cols:
-            conn.execute(text("ALTER TABLE profiles ADD COLUMN user_id INTEGER REFERENCES users(id)"))
+        for table, column, ddl in additions:
+            cols = [row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))]
+            if cols and column not in cols:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))

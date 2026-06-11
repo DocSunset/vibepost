@@ -17,7 +17,7 @@
 import httpx
 import json
 from urllib.parse import urlencode
-from ..config import UPLOADS_DIR
+from ..media import safe_media_path
 
 API = "https://api.linkedin.com/v2"
 
@@ -86,8 +86,7 @@ def post_to_linkedin(credentials: dict, text: str, media_paths: list[str]) -> st
                 upload_url = reg["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
                 asset_urn = reg["value"]["asset"]
 
-                full_path = UPLOADS_DIR / filename
-                with open(full_path, "rb") as f:
+                with open(safe_media_path(filename), "rb") as f:
                     put_r = c.put(upload_url, content=f.read(), headers={"Authorization": f"Bearer {access_token}"})
                 put_r.raise_for_status()
 

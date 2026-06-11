@@ -26,6 +26,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
+    # Bumped on password change to invalidate all outstanding sessions
+    session_epoch = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
@@ -43,6 +45,9 @@ class InviteToken(Base):
     used_at = Column(DateTime, nullable=True)
     used_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     revoked = Column(Boolean, default=False, nullable=False)
+    # Failed signup attempts with this token; auto-revoked after too many,
+    # so a leaked invite cannot be used to probe for registered emails.
+    failed_attempts = Column(Integer, default=0, nullable=False)
 
 
 class UserSetting(Base):

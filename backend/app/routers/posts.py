@@ -25,17 +25,28 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..config import MAX_UPLOAD_BYTES, UPLOADS_DIR
 from ..database import get_db
+from ..media import ALLOWED_EXTENSIONS, is_valid_media_name, safe_media_path
 from ..models import Channel, Post, PostChannel, Profile, User
 from ..ownership import owned_post, owned_profile
 from ..scheduler import cancel_post, publish_post, schedule_post
 from ..schemas import PostCreate, PostRead, PostUpdate
-from ..security import get_current_user
+from ..security import RateLimiter, get_current_user
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+# Caps how fast a single account can consume volume space
+upload_limiter = RateLimiter(max_attempts=60, window_seconds=3600)
+
+def _validated_media(media_paths: list[str]) -> list[str]:
+    """Only references the upload endpoint could have generated are storable."""
+    for name in media_paths:
+        if not is_valid_media_name(name):
+            raise HTTPException(400, "Invalid media reference")
+    return media_paths
 
 
 def _to_naive_utc(dt: datetime | None) -> datetime | None:
@@ -55,6 +66,7 @@ def _as_utc(dt: datetime | None) -> datetime | None:
 
 @router.post("/upload")
 async def upload_media(file: UploadFile = File(...), user: User = Depends(get_current_user)):
+    upload_limiter.check_key(f"user:{user.id}")
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"File type {ext} not allowed")
@@ -69,7 +81,22 @@ async def upload_media(file: UploadFile = File(...), user: User = Depends(get_cu
                 dest.unlink(missing_ok=True)
                 raise HTTPException(413, "File too large")
             f.write(chunk)
+    if ext in IMAGE_EXTENSIONS and not _is_valid_image(dest):
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, "File is not a valid image")
     return {"filename": filename}
+
+
+def _is_valid_image(path) -> bool:
+    """Content check: the bytes must actually decode as an image. Pillow's
+    default decompression-bomb limit also rejects absurd pixel counts."""
+    from PIL import Image, UnidentifiedImageError
+    try:
+        with Image.open(path) as img:
+            img.verify()
+        return True
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
+        return False
 
 
 @router.get("/media/{filename}")
@@ -99,10 +126,13 @@ def list_posts(
         q = q.filter(Post.profile_id == profile_id)
     if status:
         q = q.filter(Post.status == status)
-    if start:
-        q = q.filter(Post.scheduled_at >= _to_naive_utc(datetime.fromisoformat(start)))
-    if end:
-        q = q.filter(Post.scheduled_at <= _to_naive_utc(datetime.fromisoformat(end)))
+    try:
+        if start:
+            q = q.filter(Post.scheduled_at >= _to_naive_utc(datetime.fromisoformat(start)))
+        if end:
+            q = q.filter(Post.scheduled_at <= _to_naive_utc(datetime.fromisoformat(end)))
+    except ValueError:
+        raise HTTPException(400, "Invalid start/end datetime")
 
     return [_serialize(p) for p in q.order_by(Post.created_at.desc()).all()]
 
@@ -120,14 +150,14 @@ def create_post(body: PostCreate, user: User = Depends(get_current_user), db: Se
     post = Post(
         profile_id=body.profile_id,
         text=body.text,
-        media_paths=json.dumps(body.media_paths),
+        media_paths=json.dumps(_validated_media(body.media_paths)),
         scheduled_at=_to_naive_utc(body.scheduled_at),
         status="scheduled" if body.scheduled_at else "draft",
     )
     db.add(post)
     db.flush()
 
-    _attach_channels(db, user, post.id, body.channel_ids)
+    _attach_channels(db, user, post.id, body.profile_id, body.channel_ids)
 
     db.commit()
     db.refresh(post)
@@ -145,7 +175,7 @@ def update_post(post_id: int, body: PostUpdate, user: User = Depends(get_current
     if body.text is not None:
         post.text = body.text
     if body.media_paths is not None:
-        post.media_paths = json.dumps(body.media_paths)
+        post.media_paths = json.dumps(_validated_media(body.media_paths))
     if body.scheduled_at is not None:
         post.scheduled_at = _to_naive_utc(body.scheduled_at)
         post.status = "scheduled"
@@ -157,7 +187,7 @@ def update_post(post_id: int, body: PostUpdate, user: User = Depends(get_current
 
     if body.channel_ids is not None:
         db.query(PostChannel).filter(PostChannel.post_id == post_id).delete()
-        _attach_channels(db, user, post_id, body.channel_ids)
+        _attach_channels(db, user, post_id, post.profile_id, body.channel_ids)
 
     db.commit()
     return _serialize(_load(post_id, db))
@@ -188,13 +218,18 @@ def delete_post(post_id: int, user: User = Depends(get_current_user), db: Sessio
     return {"ok": True}
 
 
-def _attach_channels(db: Session, user: User, post_id: int, channel_ids: list[int]):
-    """Attach only channels that belong to the requesting user."""
+def _attach_channels(db: Session, user: User, post_id: int, profile_id: int, channel_ids: list[int]):
+    """Attach only channels that belong to the requesting user AND the
+    post's own profile — profile boundaries are hard."""
     for cid in channel_ids:
         channel = (
             db.query(Channel)
             .join(Profile, Channel.profile_id == Profile.id)
-            .filter(Channel.id == cid, Profile.user_id == user.id)
+            .filter(
+                Channel.id == cid,
+                Channel.profile_id == profile_id,
+                Profile.user_id == user.id,
+            )
             .first()
         )
         if not channel:

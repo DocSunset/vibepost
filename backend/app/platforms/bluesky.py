@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from atproto import Client
-from ..config import UPLOADS_DIR
+from ..media import safe_media_path
 
 
 def post_to_bluesky(credentials: dict, text: str, media_paths: list[str]) -> str:
@@ -25,8 +25,7 @@ def post_to_bluesky(credentials: dict, text: str, media_paths: list[str]) -> str
     if media_paths:
         images = []
         for path in media_paths[:4]:
-            full_path = UPLOADS_DIR / path
-            with open(full_path, "rb") as f:
+            with open(safe_media_path(path), "rb") as f:
                 data = f.read()
             ext = path.rsplit(".", 1)[-1].lower()
             mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"

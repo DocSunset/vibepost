@@ -30,6 +30,11 @@ COPY app/ ./app/
 ENV DB_PATH=/data/vibepost.db \
     UPLOADS_DIR=/data/uploads
 
+RUN useradd --system --no-create-home vibepost && \
+    printf '#!/bin/sh\nset -e\nmkdir -p /data/uploads\nchown -R vibepost:vibepost /data\nexec setpriv --reuid=vibepost --regid=vibepost --init-groups "$@"\n' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
 EXPOSE 8000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -11,6 +11,16 @@ This document records every category of personal data we handle, why we have it,
 how long we keep it, and what we do to ensure both legal compliance and genuine
 respect for user privacy.
 
+> **Implementation status (closed beta, June 2026).** The inventory below
+> describes the target architecture. The shipped beta differs in four ways,
+> all reflected in the served privacy policy (`/privacy`):
+> email + password hash instead of passkeys, all data on a Fly.io volume
+> (SQLite + local uploads) instead of Supabase/R2, platform credentials
+> stored unencrypted (see `security.md` status note), and posts retained
+> until the user deletes them rather than auto-deleted on publish. The
+> deletion cascade, JSON export, and disconnect-deletes-credential
+> behaviours ARE implemented and tested.
+
 ---
 
 ## What We Hold and Why

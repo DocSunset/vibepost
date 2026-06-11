@@ -27,6 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app/ ./app/
 COPY --from=frontend /build/dist /app/static
+COPY docker-entrypoint.sh /entrypoint.sh
+
+RUN useradd --system --no-create-home vibepost && chmod +x /entrypoint.sh
 
 ENV DB_PATH=/data/vibepost.db \
     UPLOADS_DIR=/data/uploads \
@@ -35,4 +38,6 @@ ENV DB_PATH=/data/vibepost.db \
 
 EXPOSE 8000
 
+# Entrypoint chowns the volume then drops to the unprivileged user
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

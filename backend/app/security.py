@@ -51,10 +51,11 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_session_token(user_id: int) -> str:
+def create_session_token(user: User) -> str:
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": str(user_id),
+        "sub": str(user.id),
+        "epoch": user.session_epoch or 0,
         "iat": now,
         "exp": now + timedelta(seconds=SESSION_TTL_SECONDS),
     }
@@ -84,11 +85,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
         user_id = int(payload["sub"])
+        epoch = int(payload.get("epoch", 0))
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise HTTPException(401, "Invalid or expired session")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(401, "Account no longer exists")
+    if epoch != (user.session_epoch or 0):
+        raise HTTPException(401, "Session has been revoked")
     return user
 
 
@@ -112,15 +116,17 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def check(self, request: Request) -> None:
-        ip = _client_ip(request)
+        self.check_key(_client_ip(request))
+
+    def check_key(self, key: str) -> None:
         now = time.monotonic()
         cutoff = now - self.window_seconds
         with self._lock:
-            attempts = [t for t in self._attempts.get(ip, []) if t > cutoff]
+            attempts = [t for t in self._attempts.get(key, []) if t > cutoff]
             if len(attempts) >= self.max_attempts:
                 raise HTTPException(429, "Too many attempts; try again later")
             attempts.append(now)
-            self._attempts[ip] = attempts
+            self._attempts[key] = attempts
             # Opportunistic cleanup so the map doesn't grow without bound
             if len(self._attempts) > 10000:
                 self._attempts = {
@@ -131,10 +137,12 @@ class RateLimiter:
 
 
 def _client_ip(request: Request) -> str:
-    # Fly.io / reverse proxies set X-Forwarded-For; the first entry is the client.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # Fly-Client-IP is set by Fly's edge proxy and cannot be forged by the
+    # client. Never trust X-Forwarded-For for rate limiting: clients control
+    # its left-most entries, which would grant a fresh bucket per request.
+    fly_ip = request.headers.get("fly-client-ip")
+    if fly_ip:
+        return fly_ip.strip()
     return request.client.host if request.client else "unknown"
 
 

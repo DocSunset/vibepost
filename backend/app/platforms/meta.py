@@ -17,7 +17,7 @@
 import httpx
 import json
 from urllib.parse import urlencode
-from ..config import UPLOADS_DIR
+from ..media import safe_media_path
 
 GRAPH = "https://graph.facebook.com/v19.0"
 THREADS_GRAPH = "https://graph.threads.net/v1.0"
@@ -111,8 +111,7 @@ def post_to_facebook(credentials: dict, text: str, media_paths: list[str]) -> st
         if media_paths:
             photo_ids = []
             for filename in media_paths:
-                full_path = UPLOADS_DIR / filename
-                with open(full_path, "rb") as f:
+                with open(safe_media_path(filename), "rb") as f:
                     r = c.post(f"{GRAPH}/{page_id}/photos", data={
                         "access_token": page_token,
                         "published": "false",

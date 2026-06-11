@@ -1,5 +1,12 @@
 # Media Privacy: No Public Exposure Until Posting
 
+> **Implementation status (closed beta, June 2026):** the beta does *not* yet
+> implement this design. Uploaded media is served from `/media/<uuid4>.<ext>`
+> on the app's own domain — publicly reachable by anyone holding the exact
+> URL (required so Instagram/Threads can fetch it), but with unguessable
+> names, and deleted when the post or account is deleted. The R2 + presigned
+> URL design below is the post-beta target.
+
 ## Requirement
 
 A user should be able to cancel a scheduled post right up to the wire without

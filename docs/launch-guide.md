@@ -145,9 +145,13 @@ From `roadmap/privacy.md`, adapted to the beta architecture:
 - **Password recovery requires the admin** until transactional email lands.
 - **Single machine**: a Fly hardware failure delays scheduled posts until the
   machine is restored from snapshot. Acceptable for beta.
-- **Sessions are stateless JWTs**: deleting an account invalidates its
-  sessions (user lookup fails), but a stolen cookie cannot be revoked before
-  expiry short of rotating `SECRET_KEY` (which logs everyone out).
+- **Sessions are stateless JWTs** with a per-user epoch: deleting an account
+  or changing the password immediately invalidates every outstanding session
+  for that user. There is no per-device "log out that one session" — changing
+  the password is the revocation tool.
+- **Platform credentials are stored unencrypted in SQLite** on the volume
+  (the Vault design in `roadmap/security.md` is post-beta). Treat volume
+  snapshots and `fly ssh` access accordingly.
 
 ## Post-beta roadmap pointers
 

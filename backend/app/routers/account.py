@@ -61,7 +61,10 @@ def _validate_credentials(email: str, password: str) -> str:
     return email
 
 
-def _consume_invite(db: Session, token: str, now: datetime) -> InviteToken:
+MAX_INVITE_FAILURES = 5
+
+
+def _lookup_invite(db: Session, token: str, now: datetime) -> InviteToken:
     invite = (
         db.query(InviteToken)
         .filter(InviteToken.token_hash == hash_token(token.strip()))
@@ -80,10 +83,20 @@ def signup(body: SignupRequest, request: Request, response: Response, db: Sessio
     email = _validate_credentials(body.email, body.password)
 
     now = datetime.now(timezone.utc)
-    invite = _consume_invite(db, body.invite_code, now)
+    invite = _lookup_invite(db, body.invite_code, now)
 
     if db.query(User).filter(User.email == email).first():
-        raise HTTPException(409, "An account with this email already exists")
+        # Burn the invite a little on every failure so a leaked code cannot
+        # be replayed indefinitely to probe which emails are registered, and
+        # keep the message vague for the same reason.
+        invite.failed_attempts = (invite.failed_attempts or 0) + 1
+        if invite.failed_attempts >= MAX_INVITE_FAILURES:
+            invite.revoked = True
+        db.commit()
+        raise HTTPException(
+            400,
+            "Could not create an account with this email — if you already have one, sign in instead",
+        )
 
     # The first account ever created becomes the admin.
     is_first = db.query(User).count() == 0
@@ -94,9 +107,16 @@ def signup(body: SignupRequest, request: Request, response: Response, db: Sessio
     invite.used_at = now
     invite.used_by_user_id = user.id
     db.commit()
+
+    if is_first:
+        # Guard against two concurrent first signups both claiming admin
+        first_admin = db.query(User).filter(User.is_admin).order_by(User.id).first()
+        if first_admin and first_admin.id != user.id:
+            user.is_admin = False
+            db.commit()
     db.refresh(user)
 
-    set_session_cookie(response, create_session_token(user.id))
+    set_session_cookie(response, create_session_token(user))
     return user
 
 
@@ -113,7 +133,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Incorrect email or password")
 
-    set_session_cookie(response, create_session_token(user.id))
+    set_session_cookie(response, create_session_token(user))
     return user
 
 
@@ -135,6 +155,7 @@ def me(user: User = Depends(get_current_user)):
 def change_password(
     body: ChangePasswordRequest,
     request: Request,
+    response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -144,7 +165,11 @@ def change_password(
     if len(body.new_password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(400, f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
     user.password_hash = hash_password(body.new_password)
+    # Revoke every outstanding session (stolen cookies included), then issue
+    # a fresh one so the user changing their password stays signed in.
+    user.session_epoch = (user.session_epoch or 0) + 1
     db.commit()
+    set_session_cookie(response, create_session_token(user))
     return {"ok": True}
 
 

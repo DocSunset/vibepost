@@ -1,13 +1,15 @@
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
-sqlalchemy>=2.0.0
-pydantic>=2.0.0
-python-multipart>=0.0.9
-httpx>=0.27.0
-atproto>=0.0.54
-apscheduler>=3.10.4
-python-dotenv>=1.0.0
-aiofiles>=23.2.1
-Pillow>=10.0.0
-bcrypt>=4.1.0
-PyJWT>=2.8.0
+# Exact pins per roadmap/security.md (supply chain). Update deliberately and
+# run `pip-audit` after bumping.
+fastapi==0.136.3
+uvicorn[standard]==0.49.0
+SQLAlchemy==2.0.50
+pydantic==2.13.4
+python-multipart==0.0.32
+httpx==0.28.1
+atproto==0.0.67
+APScheduler==3.11.2
+python-dotenv==1.2.2
+aiofiles==25.1.0
+pillow==12.2.0
+bcrypt==5.0.0
+PyJWT==2.13.0

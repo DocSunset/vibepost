@@ -2,6 +2,27 @@
 
 Things we are responsible for protecting, and how.
 
+> **Implementation status (closed beta, June 2026).** This document describes
+> the *target* architecture (Supabase Auth + Vault, R2, RLS). The shipped
+> closed beta differs, and an honest threat model has to say so:
+>
+> - **Platform credentials are plaintext JSON in SQLite** on the Fly volume,
+>   not in Vault. A database dump *does* yield live tokens. Mitigations in the
+>   beta: per-user API isolation, non-root container, strict validation of
+>   every file path that reaches `open()`, no credential ever serialized to
+>   the client, logs, or exports. Vault (or app-level encryption) is required
+>   before widening access beyond trusted beta users.
+> - **App auth is email + bcrypt password handled by us**, not Supabase
+>   passkeys yet. Sessions are JWTs in httpOnly `SameSite=Lax` cookies with a
+>   per-user epoch so password changes revoke all outstanding sessions.
+> - **Isolation is application-level ownership checks** (every query joins
+>   through the requesting user), not database RLS.
+> - **Media is public-but-unguessable** (`/media/<uuid>`), not private R2 with
+>   presigned URLs — see `media-privacy.md` for the target and the beta note.
+>
+> See `docs/launch-guide.md` for the accepted-limitations list shown to the
+> operator.
+
 ---
 
 ## Platform Credentials (User Secrets)
