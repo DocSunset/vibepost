@@ -22,7 +22,8 @@ Usage (from the backend/ directory, or inside the container):
     python -m app.manage invite list
     python -m app.manage invite revoke <id>
     python -m app.manage users
-    python -m app.manage promote <email>      # grant admin
+    python -m app.manage promote <email>      # grant admin (the only way to get admin)
+    python -m app.manage demote <email>       # remove admin
     python -m app.manage claim-orphans <email># attach pre-auth profiles to a user
 """
 
@@ -60,6 +61,8 @@ def main():
     sub.add_parser("users", help="list user accounts")
     promote = sub.add_parser("promote", help="grant admin to a user")
     promote.add_argument("email")
+    demote = sub.add_parser("demote", help="remove admin from a user")
+    demote.add_argument("email")
     claim = sub.add_parser("claim-orphans", help="attach profiles with no owner to a user")
     claim.add_argument("email")
 
@@ -98,6 +101,13 @@ def main():
             u.is_admin = True
             db.commit()
             print(f"{u.email} is now an admin")
+        elif args.cmd == "demote":
+            u = db.query(User).filter(User.email == args.email.strip().lower()).first()
+            if not u:
+                sys.exit(f"No user with email {args.email}")
+            u.is_admin = False
+            db.commit()
+            print(f"{u.email} is no longer an admin")
         elif args.cmd == "claim-orphans":
             u = db.query(User).filter(User.email == args.email.strip().lower()).first()
             if not u:

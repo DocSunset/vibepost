@@ -99,7 +99,8 @@ class AppSettingUpdate(BaseModel):
 class SignupRequest(BaseModel):
     invite_code: str
     email: str
-    password: str
+    # Optional: accounts default to passwordless (email link / passkey).
+    password: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -108,14 +109,43 @@ class LoginRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
+    # Empty when the account has no password yet (setting one for the first time).
+    current_password: str = ""
     new_password: str
+
+
+class MagicLinkRequest(BaseModel):
+    email: str
+
+
+class MagicLinkVerifyRequest(BaseModel):
+    token: str
+
+
+class PasskeyRead(BaseModel):
+    id: int
+    label: str
+    created_at: datetime
+    last_used_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class PasskeyRegisterVerifyRequest(BaseModel):
+    credential: dict
+    label: str = ""
+
+
+class PasskeyLoginVerifyRequest(BaseModel):
+    challenge_id: str
+    credential: dict
 
 
 class UserRead(BaseModel):
     id: int
     email: str
     is_admin: bool
+    has_password: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}

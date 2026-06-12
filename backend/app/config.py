@@ -67,4 +67,22 @@ SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(7 * 24 * 360
 # Default lifetime of an invite token, in days.
 INVITE_TTL_DAYS = int(os.environ.get("INVITE_TTL_DAYS", "14"))
 
+# Transactional email (sign-in links). Without an API key, emails are logged
+# to the console instead — fine for development, useless in production.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "vibepost <login@localhost>")
+if IS_PROD and RESEND_API_KEY and "localhost" in EMAIL_FROM:
+    sys.exit("FATAL: set EMAIL_FROM to a sender on your verified domain, e.g. 'vibepost <login@your-domain>'")
+
+# How long an emailed sign-in link stays valid.
+LOGIN_LINK_TTL_SECONDS = int(os.environ.get("LOGIN_LINK_TTL_SECONDS", str(15 * 60)))
+
+# WebAuthn relying party: passkeys are bound to this domain. Defaults to the
+# frontend's hostname, which is correct unless you serve from multiple hosts.
+from urllib.parse import urlparse as _urlparse  # noqa: E402
+WEBAUTHN_RP_ID = os.environ.get("WEBAUTHN_RP_ID", _urlparse(FRONTEND_URL).hostname or "localhost")
+WEBAUTHN_RP_NAME = "vibepost"
+# Origins allowed to complete WebAuthn ceremonies.
+WEBAUTHN_ORIGINS = [o for o in {FRONTEND_URL.rstrip("/"), OAUTH_CALLBACK_BASE.rstrip("/")} if o]
+
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))

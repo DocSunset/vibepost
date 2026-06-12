@@ -82,7 +82,14 @@ export default function App() {
     });
     api.account
       .me()
-      .then(setUser)
+      .then((u) => {
+        setUser(u);
+        // Already signed in: a leftover ?login_token= (e.g. opening the
+        // emailed link in a signed-in browser) is just noise — drop it.
+        if (new URLSearchParams(window.location.search).get("login_token")) {
+          window.history.replaceState({}, "", "/");
+        }
+      })
       .catch(() => setUser(null))
       .finally(() => setAuthChecked(true));
   }, []);

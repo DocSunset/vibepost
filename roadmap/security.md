@@ -12,9 +12,13 @@ Things we are responsible for protecting, and how.
 >   every file path that reaches `open()`, no credential ever serialized to
 >   the client, logs, or exports. Vault (or app-level encryption) is required
 >   before widening access beyond trusted beta users.
-> - **App auth is email + bcrypt password handled by us**, not Supabase
->   passkeys yet. Sessions are JWTs in httpOnly `SameSite=Lax` cookies with a
->   per-user epoch so password changes revoke all outstanding sessions.
+> - **App auth is passwordless and self-contained** (no Supabase): emailed
+>   single-use sign-in links (Resend, 15-min expiry, hashed at rest) and
+>   WebAuthn passkeys via py_webauthn; an optional bcrypt password remains as
+>   a legacy fallback. Sessions are JWTs in httpOnly `SameSite=Lax` cookies
+>   with a per-user epoch so password changes revoke all outstanding
+>   sessions. Admin is granted only via the server-console CLI, never by
+>   signup order.
 > - **Isolation is application-level ownership checks** (every query joins
 >   through the requesting user), not database RLS.
 > - **Media is public-but-unguessable** (`/media/<uuid>`), not private R2 with

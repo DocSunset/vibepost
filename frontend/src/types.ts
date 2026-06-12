@@ -73,7 +73,15 @@ export interface User {
   id: number;
   email: string;
   is_admin: boolean;
+  has_password: boolean;
   created_at: string;
+}
+
+export interface Passkey {
+  id: number;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export interface Invite {

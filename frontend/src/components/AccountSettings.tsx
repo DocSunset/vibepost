@@ -15,8 +15,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { useEffect, useState } from "react";
+import { startRegistration } from "@simplewebauthn/browser";
 import { api } from "../api";
-import type { Invite, User } from "../types";
+import type { Invite, Passkey, User } from "../types";
 
 interface Props {
   user: User;
@@ -29,6 +30,12 @@ export default function AccountSettings({ user, onLoggedOut, onError, onSuccess 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changing, setChanging] = useState(false);
+  const [hasPassword, setHasPassword] = useState(user.has_password);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+
+  // Passkeys
+  const [passkeys, setPasskeys] = useState<Passkey[]>([]);
+  const [addingPasskey, setAddingPasskey] = useState(false);
 
   // Admin invite state
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -39,6 +46,7 @@ export default function AccountSettings({ user, onLoggedOut, onError, onSuccess 
     if (user.is_admin) {
       api.account.invites.list().then(setInvites).catch(() => {});
     }
+    api.account.passkeys.list().then(setPasskeys).catch(() => {});
   }, [user.is_admin]);
 
   const changePassword = async () => {
@@ -47,11 +55,43 @@ export default function AccountSettings({ user, onLoggedOut, onError, onSuccess 
       await api.account.changePassword(currentPassword, newPassword);
       setCurrentPassword("");
       setNewPassword("");
-      onSuccess("Password changed");
+      setHasPassword(true);
+      setShowPasswordForm(false);
+      onSuccess(hasPassword ? "Password changed" : "Password set");
     } catch (e: any) {
       onError(e.response?.data?.detail || "Could not change password");
     } finally {
       setChanging(false);
+    }
+  };
+
+  const addPasskey = async () => {
+    setAddingPasskey(true);
+    try {
+      const options = await api.account.passkeys.registerOptions();
+      const credential = await startRegistration({ optionsJSON: options as any });
+      const label = prompt("Name this passkey (e.g. \"laptop\", \"phone\"):") || "";
+      await api.account.passkeys.registerVerify(credential, label);
+      setPasskeys(await api.account.passkeys.list());
+      onSuccess("Passkey added — you can now sign in with it");
+    } catch (e: any) {
+      if (e?.name === "NotAllowedError") {
+        onError("Passkey prompt was dismissed");
+      } else {
+        onError(e.response?.data?.detail || "Could not add passkey");
+      }
+    } finally {
+      setAddingPasskey(false);
+    }
+  };
+
+  const removePasskey = async (id: number) => {
+    if (!confirm("Remove this passkey? You won't be able to sign in with it anymore.")) return;
+    try {
+      await api.account.passkeys.delete(id);
+      setPasskeys(await api.account.passkeys.list());
+    } catch {
+      onError("Could not remove passkey");
     }
   };
 
@@ -125,32 +165,86 @@ export default function AccountSettings({ user, onLoggedOut, onError, onSuccess 
           </p>
 
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Change password</p>
-            <div className="flex gap-2 flex-wrap">
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Current password"
-                autoComplete="current-password"
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New password (10+ chars)"
-                autoComplete="new-password"
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <button
-                onClick={changePassword}
-                disabled={changing || !currentPassword || newPassword.length < 10}
-                className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
-              >
-                Change
-              </button>
-            </div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Passkeys</p>
+            <p className="text-xs text-gray-400 mb-3">
+              The fastest, safest way to sign in — your device's fingerprint, face, or PIN.
+              No password, nothing to phish.
+            </p>
+            {passkeys.length > 0 && (
+              <div className="space-y-1 mb-3">
+                {passkeys.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 text-sm py-1">
+                    <span>🔑</span>
+                    <span className="text-gray-700 flex-1 truncate">{p.label}</span>
+                    <span className="text-xs text-gray-400">
+                      {p.last_used_at
+                        ? `last used ${new Date(p.last_used_at + "Z").toLocaleDateString()}`
+                        : "never used"}
+                    </span>
+                    <button
+                      onClick={() => removePasskey(p.id)}
+                      className="text-xs text-gray-400 hover:text-red-500"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={addPasskey}
+              disabled={addingPasskey}
+              className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
+            >
+              {addingPasskey ? "Follow your browser's prompt…" : "Add a passkey"}
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            {!showPasswordForm ? (
+              <p className="text-xs text-gray-400">
+                {hasPassword ? "This account has a password. " : "This account has no password — sign-in is by email link or passkey. "}
+                <button
+                  onClick={() => setShowPasswordForm(true)}
+                  className="underline hover:text-gray-600"
+                >
+                  {hasPassword ? "Change it" : "Set one anyway"}
+                </button>
+              </p>
+            ) : (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">
+                  {hasPassword ? "Change password" : "Set a password"}
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {hasPassword && (
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Current password"
+                      autoComplete="current-password"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  )}
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="New password (10+ chars)"
+                    autoComplete="new-password"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <button
+                    onClick={changePassword}
+                    disabled={changing || (hasPassword && !currentPassword) || newPassword.length < 10}
+                    className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                  >
+                    {hasPassword ? "Change" : "Set password"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4 pt-2 border-t border-gray-100">

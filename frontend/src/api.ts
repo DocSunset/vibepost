@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import axios from "axios";
-import type { Profile, Channel, Post, AppSettings, User, Invite } from "./types";
+import type { Profile, Channel, Post, AppSettings, User, Invite, Passkey } from "./types";
 
 const http = axios.create({ baseURL: "/api" });
 
@@ -41,13 +41,36 @@ http.interceptors.response.use(
 export const api = {
   account: {
     me: () => http.get<User>("/account/me").then((r) => r.data),
-    signup: (invite_code: string, email: string, password: string) =>
-      http.post<User>("/account/signup", { invite_code, email, password }).then((r) => r.data),
+    signup: (invite_code: string, email: string, password?: string) =>
+      http
+        .post<User>("/account/signup", { invite_code, email, password: password || null })
+        .then((r) => r.data),
     login: (email: string, password: string) =>
       http.post<User>("/account/login", { email, password }).then((r) => r.data),
+    requestMagicLink: (email: string) =>
+      http.post<{ ok: boolean; message: string }>("/account/magic-link", { email }).then((r) => r.data),
+    verifyMagicLink: (token: string) =>
+      http.post<User>("/account/magic-link/verify", { token }).then((r) => r.data),
     logout: () => http.post("/account/logout"),
     changePassword: (current_password: string, new_password: string) =>
       http.post("/account/change-password", { current_password, new_password }),
+    passkeys: {
+      list: () => http.get<Passkey[]>("/account/passkeys").then((r) => r.data),
+      registerOptions: () => http.post("/account/passkeys/register/options").then((r) => r.data),
+      registerVerify: (credential: unknown, label: string) =>
+        http
+          .post<Passkey>("/account/passkeys/register/verify", { credential, label })
+          .then((r) => r.data),
+      loginOptions: () =>
+        http
+          .post<{ challenge_id: string; options: unknown }>("/account/passkeys/login/options")
+          .then((r) => r.data),
+      loginVerify: (challenge_id: string, credential: unknown) =>
+        http
+          .post<User>("/account/passkeys/login/verify", { challenge_id, credential })
+          .then((r) => r.data),
+      delete: (id: number) => http.delete(`/account/passkeys/${id}`),
+    },
     exportData: () => http.get("/account/export").then((r) => r.data),
     deleteAccount: () => http.delete("/account"),
     invites: {

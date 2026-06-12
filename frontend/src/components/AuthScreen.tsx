@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { useState } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { api } from "../api";
 import type { User } from "../types";
 
@@ -24,31 +25,271 @@ interface Props {
 
 type Mode = "login" | "signup";
 
+function pendingLoginToken(): string | null {
+  return new URLSearchParams(window.location.search).get("login_token");
+}
+
 export default function AuthScreen({ onAuthed }: Props) {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [usePassword, setUsePassword] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+  const [loginToken] = useState<string | null>(pendingLoginToken);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const finish = (user: User, isNew: boolean) => {
+    // Drop any ?login_token= from the address bar before entering the app
+    window.history.replaceState({}, "", window.location.pathname === "/privacy" ? "/" : window.location.pathname);
+    onAuthed(user, isNew);
+  };
+
+  const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
     try {
-      const user =
-        mode === "login"
-          ? await api.account.login(email, password)
-          : await api.account.signup(inviteCode, email, password);
-      onAuthed(user, mode === "signup");
+      await fn();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Something went wrong — please try again");
+      if (err?.name === "NotAllowedError") {
+        setError("Passkey prompt was dismissed — try again when you're ready");
+      } else {
+        setError(err.response?.data?.detail || "Something went wrong — please try again");
+      }
     } finally {
       setBusy(false);
     }
   };
 
+  const completeLinkSignIn = () =>
+    run(async () => {
+      const user = await api.account.verifyMagicLink(loginToken!);
+      finish(user, false);
+    });
+
+  const sendLink = (e: React.FormEvent) => {
+    e.preventDefault();
+    run(async () => {
+      await api.account.requestMagicLink(email);
+      setLinkSent(true);
+    });
+  };
+
+  const passkeySignIn = () =>
+    run(async () => {
+      const { challenge_id, options } = await api.account.passkeys.loginOptions();
+      const credential = await startAuthentication({ optionsJSON: options as any });
+      const user = await api.account.passkeys.loginVerify(challenge_id, credential);
+      finish(user, false);
+    });
+
+  const passwordSignIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    run(async () => {
+      const user = await api.account.login(email, password);
+      finish(user, false);
+    });
+  };
+
+  const signup = (e: React.FormEvent) => {
+    e.preventDefault();
+    run(async () => {
+      const user = await api.account.signup(inviteCode, email);
+      finish(user, true);
+    });
+  };
+
+  const inputClass =
+    "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500";
+
+  // Arrived via an emailed sign-in link: confirm with a click rather than
+  // signing in automatically, so an email scanner that opens the URL
+  // can't consume the link.
+  if (loginToken) {
+    return (
+      <Shell>
+        <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+          <h2 className="text-lg font-semibold text-gray-900">Finish signing in</h2>
+          <p className="text-sm text-gray-500 mt-2 mb-6">
+            You followed a sign-in link from your email. One more click and you're in.
+          </p>
+          {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
+          <button
+            onClick={completeLinkSignIn}
+            disabled={busy}
+            className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
+          >
+            {busy ? "One moment…" : "Sign in to vibepost"}
+          </button>
+          <button
+            onClick={() => { window.history.replaceState({}, "", "/"); window.location.reload(); }}
+            className="mt-3 text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            Cancel
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (linkSent) {
+    return (
+      <Shell>
+        <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+          <div className="text-3xl mb-3">📬</div>
+          <h2 className="text-lg font-semibold text-gray-900">Check your email</h2>
+          <p className="text-sm text-gray-500 mt-2">
+            If <span className="font-medium text-gray-700">{email}</span> has an account,
+            a sign-in link is on its way. It works once and expires in 15 minutes.
+          </p>
+          <button
+            onClick={() => setLinkSent(false)}
+            className="mt-6 text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            Use a different method
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell>
+      <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6">
+          {(["login", "signup"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setError(null); }}
+              className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                mode === m ? "bg-white text-gray-900 shadow" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {m === "login" ? "Sign in" : "Create account"}
+            </button>
+          ))}
+        </div>
+
+        {mode === "login" ? (
+          <>
+            <form onSubmit={usePassword ? passwordSignIn : sendLink} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoComplete="email"
+                  className={inputClass}
+                />
+              </div>
+
+              {usePassword && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••"
+                    required
+                    autoComplete="current-password"
+                    className={inputClass}
+                  />
+                </div>
+              )}
+
+              {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
+              >
+                {busy ? "One moment…" : usePassword ? "Sign in" : "Email me a sign-in link"}
+              </button>
+            </form>
+
+            <div className="flex items-center gap-3 my-4">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-[11px] text-gray-400 uppercase tracking-wide">or</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            <button
+              onClick={passkeySignIn}
+              disabled={busy}
+              className="w-full py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              🔑 Sign in with a passkey
+            </button>
+
+            <button
+              onClick={() => { setUsePassword(!usePassword); setError(null); }}
+              className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              {usePassword ? "Email me a sign-in link instead" : "Use a password instead"}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-gray-500 mb-4">
+              vibepost is in closed beta. You need an invite code from whoever runs this
+              instance — if you don't have one, ask them for an invite.
+            </p>
+            <form onSubmit={signup} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Invite code</label>
+                <input
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder="Paste your invite code"
+                  required
+                  autoComplete="off"
+                  className={`${inputClass} font-mono`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoComplete="email"
+                  className={inputClass}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  No password needed — you'll sign in with a link sent to this address, or add
+                  a passkey later. Email is used only for signing in and to tell you if a
+                  scheduled post fails. Never for marketing. See our{" "}
+                  <a href="/privacy" className="underline">privacy policy</a>.
+                </p>
+              </div>
+
+              {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
+              >
+                {busy ? "One moment…" : "Create account"}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-950 to-gray-900 px-4">
       <div className="w-full max-w-md">
@@ -58,93 +299,7 @@ export default function AuthScreen({ onAuthed }: Props) {
             Write once, post everywhere. Your content, your accounts, your schedule.
           </p>
         </div>
-
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6">
-            {(["login", "signup"] as Mode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => { setMode(m); setError(null); }}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
-                  mode === m ? "bg-white text-gray-900 shadow" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {m === "login" ? "Sign in" : "Create account"}
-              </button>
-            ))}
-          </div>
-
-          {mode === "signup" && (
-            <p className="text-xs text-gray-500 mb-4">
-              vibepost is in closed beta. You need an invite code from whoever runs this
-              instance — if you don't have one, ask them for an invite.
-            </p>
-          )}
-
-          <form onSubmit={submit} className="space-y-4">
-            {mode === "signup" && (
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Invite code</label>
-                <input
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
-                  placeholder="Paste your invite code"
-                  required
-                  autoComplete="off"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                autoComplete="email"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              {mode === "signup" && (
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Used only for account recovery and to tell you if a scheduled post fails.
-                  Never for marketing. See our <a href="/privacy" className="underline">privacy policy</a>.
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Password {mode === "signup" && <span className="text-gray-400">(10+ characters)</span>}
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••"
-                required
-                minLength={mode === "signup" ? 10 : undefined}
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
-            >
-              {busy ? "One moment…" : mode === "login" ? "Sign in" : "Create account"}
-            </button>
-          </form>
-        </div>
-
+        {children}
         <p className="text-center text-xs text-indigo-400/60 mt-6">
           <a href="/privacy" className="hover:text-indigo-300 underline">Privacy</a>
           {" · "}

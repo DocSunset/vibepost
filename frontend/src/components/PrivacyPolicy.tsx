@@ -33,9 +33,15 @@ export default function PrivacyPolicy() {
             <h2 className="font-semibold text-gray-900 mb-1">What we store, and why</h2>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                <strong>Email address and a password hash</strong> — to sign you in, recover your
-                account, and contact you about failures or security issues. Never used for
-                marketing, never shared, never sold.
+                <strong>Email address</strong> — to send you single-use sign-in links and to
+                contact you about failures or security issues. Sign-in emails go through our
+                email provider (Resend); we send nothing else. Never used for marketing, never
+                shared, never sold.
+              </li>
+              <li>
+                <strong>Passkey public keys, and a password hash if you choose to set a
+                password</strong> — to sign you in. A passkey's private key never leaves your
+                device; we only ever hold the public half, which is useless to anyone else.
               </li>
               <li>
                 <strong>Social platform credentials</strong> (OAuth tokens, Bluesky app
@@ -69,8 +75,9 @@ export default function PrivacyPolicy() {
             <h2 className="font-semibold text-gray-900 mb-1">Who we share data with</h2>
             <p>
               The social platforms you explicitly connect and post to (that sharing is the whole
-              point of the service), and our hosting infrastructure provider. Nothing is shared
-              with data brokers, advertisers, or analytics companies.
+              point of the service), our hosting infrastructure provider, and our email provider
+              (Resend), which sees your address and the sign-in emails we send you — nothing
+              else. Nothing is shared with data brokers, advertisers, or analytics companies.
             </p>
           </section>
 

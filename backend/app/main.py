@@ -28,7 +28,7 @@ from .config import CORS_ORIGINS, FRONTEND_DIST, IS_PROD, UPLOADS_DIR
 from .database import engine, Base, run_migrations
 from .models import *  # noqa: register all models
 from .scheduler import scheduler, restore_jobs
-from .routers import profiles, channels, auth, posts, account
+from .routers import profiles, channels, auth, posts, account, passkeys
 
 Base.metadata.create_all(bind=engine)
 run_migrations()
@@ -97,6 +97,7 @@ def health():
 
 
 app.include_router(account.router, prefix="/api")
+app.include_router(passkeys.router, prefix="/api")
 app.include_router(profiles.router, prefix="/api")
 app.include_router(channels.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")

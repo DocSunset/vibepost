@@ -24,7 +24,10 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
-    password_hash = Column(String, nullable=False)
+    # Empty string means no password: the account signs in via emailed link
+    # or passkey only. (Sentinel rather than NULL so existing rows need no
+    # schema migration; verify_password fails closed on "".)
+    password_hash = Column(String, nullable=False, default="")
     is_admin = Column(Boolean, default=False, nullable=False)
     # Bumped on password change to invalidate all outstanding sessions
     session_epoch = Column(Integer, default=0, nullable=False)
@@ -32,6 +35,42 @@ class User(Base):
 
     profiles = relationship("Profile", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSetting", back_populates="user", cascade="all, delete-orphan")
+    passkeys = relationship("WebAuthnCredential", back_populates="user", cascade="all, delete-orphan")
+    login_tokens = relationship("LoginToken", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def has_password(self) -> bool:
+        return bool(self.password_hash)
+
+
+class LoginToken(Base):
+    """Single-use emailed sign-in link. Only the SHA-256 hash is stored."""
+    __tablename__ = "login_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    token_hash = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="login_tokens")
+
+
+class WebAuthnCredential(Base):
+    """A registered passkey. Stores only the public half; the private key
+    never leaves the user's authenticator."""
+    __tablename__ = "webauthn_credentials"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    credential_id = Column(String, unique=True, nullable=False, index=True)  # base64url
+    public_key = Column(String, nullable=False)  # base64url
+    sign_count = Column(Integer, default=0, nullable=False)
+    transports = Column(String, default="")  # comma-separated hints
+    label = Column(String, default="")  # user-facing name, e.g. "MacBook Touch ID"
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="passkeys")
 
 
 class InviteToken(Base):
