@@ -194,6 +194,42 @@ From `roadmap/privacy.md`, adapted to the beta architecture:
 4. Export your data; delete a test account; confirm its media is gone from
    `/data/uploads`.
 
+## Operating securely after launch
+
+Ongoing habits, not launch steps — roughly in order of value for a
+one-person operation:
+
+1. **Practice a restore before you need one.** Pull a volume snapshot,
+   stand the database up locally, decrypt a row with your password-manager
+   copy of `CREDENTIALS_KEY`. Backups you've never restored are prayers.
+   Do it once before launch, then quarterly.
+2. **Phishing discipline beats tooling.** Bookmark the Fly / GitHub /
+   Resend / registrar dashboards and only ever log in from the bookmarks —
+   never from a link in an email. Nearly every real-world takeover of a
+   small operator starts with a convincing login-link email.
+3. **Scoped deploy tokens, not your personal session.** If you automate
+   deploys, use `fly tokens create deploy` (app-scoped) rather than your
+   org-wide credentials, so a leaked CI secret can't touch the rest of
+   your Fly account.
+4. **Treat your laptop as production-adjacent.** Full-disk encryption on;
+   any `vibepost.db` you pull down gets encrypted (`age`) or deleted
+   promptly. The database is ciphertext, but the keys live in your
+   password manager on that same machine.
+5. **GitHub hygiene.** Branch protection on `main` (no force-push), and
+   enable Dependabot alerts + secret scanning — both free on the public
+   repo. Secret scanning is the backstop if a key ever lands in a commit;
+   if one does, **rotate it** (history is forever), don't just delete it.
+6. **A free uptime monitor on `/api/health`** (UptimeRobot or similar).
+   It's availability tooling, but it's also your earliest breach signal —
+   you find out the machine restarted or stopped responding before a user
+   does.
+7. **Rebuild monthly.** The weekly supply-chain audit catches known CVEs
+   in pinned dependencies, but the Docker base image accumulates OS-level
+   patches — an otherwise-unchanged `fly deploy` once a month picks those
+   up.
+8. **Read `docs/incident-runbook.md` once a quarter.** Fifteen minutes.
+   Its entire value is being familiar *before* the bad day.
+
 ## Known beta limitations (accepted, documented)
 
 - **Media is private until publish**: `/media/<uuid>` serves a file only to
