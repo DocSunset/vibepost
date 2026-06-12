@@ -30,6 +30,12 @@ if ! $PIP_AUDIT -r "$ROOT/backend/requirements.txt" --no-deps --disable-pip; the
 fi
 
 echo
+echo "==> Python dependencies: discord-bot (pip-audit)"
+if ! $PIP_AUDIT -r "$ROOT/discord-bot/requirements.txt" --no-deps --disable-pip; then
+  FAILED=1
+fi
+
+echo
 echo "==> npm dependencies (npm audit)"
 # The frontend is compiled to a static bundle, so even dev-tool advisories
 # matter only insofar as they affect the build or the dev server — but we
