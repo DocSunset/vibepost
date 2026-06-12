@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..config import UPLOADS_DIR
 from ..database import get_db
-from ..models import Profile, User
+from ..models import MediaFile, Profile, User
 from ..ownership import owned_profile
 from ..scheduler import cancel_post
 from ..schemas import ProfileCreate, ProfileRead
@@ -72,10 +72,13 @@ def delete_profile(
     profile = owned_profile(db, user, profile_id)
     for post in profile.posts:
         cancel_post(post.id)
-        for filename in json.loads(post.media_paths or "[]"):
+        filenames = json.loads(post.media_paths or "[]")
+        for filename in filenames:
             path = (UPLOADS_DIR / filename).resolve()
             if path.is_relative_to(UPLOADS_DIR.resolve()) and path.is_file():
                 path.unlink(missing_ok=True)
+        if filenames:
+            db.query(MediaFile).filter(MediaFile.filename.in_(filenames)).delete(synchronize_session=False)
     db.delete(profile)
     db.commit()
     return {"ok": True}

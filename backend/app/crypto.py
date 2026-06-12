@@ -106,6 +106,11 @@ def is_encrypted(value: str) -> bool:
     return isinstance(value, str) and value.startswith(_PREFIX)
 
 
+def derive_key(purpose: str) -> bytes:
+    """A purpose-scoped key for non-column uses (e.g. media URL signing)."""
+    return _subkey(CREDENTIALS_KEY, purpose)
+
+
 def email_index(email: str) -> str:
     """Deterministic keyed hash of an email for lookups and uniqueness.
 

@@ -16,18 +16,22 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from .config import CORS_ORIGINS, FRONTEND_DIST, IS_PROD, UPLOADS_DIR
-from .database import engine, Base, run_migrations
+from .database import engine, Base, get_db, run_migrations
+from .media import safe_media_path, verify_media_signature
 from .models import *  # noqa: register all models
+from .models import MediaFile, Post, Profile
 from .scheduler import scheduler, restore_jobs
+from .security import get_current_user
 from .routers import profiles, channels, auth, posts, account, passkeys
 
 Base.metadata.create_all(bind=engine)
@@ -103,11 +107,53 @@ app.include_router(channels.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(posts.router, prefix="/api")
 
-# Uploaded media is served publicly at /media/<uuid>.<ext>. This must stay
-# publicly reachable: Instagram and Threads ingest media by fetching a URL.
-# Filenames are unguessable UUIDs and files are deleted with their posts.
+# Media is NOT public. A file is served only to its owner's authenticated
+# session (UI previews), or with a short-lived HMAC-signed URL minted at
+# publish time for platforms that ingest media by fetching a URL
+# (Instagram/Threads/Facebook). Anything else — including expired or
+# tampered signatures — is a 404, indistinguishable from a missing file.
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/media", StaticFiles(directory=str(UPLOADS_DIR)), name="media")
+
+
+@app.get("/media/{filename}", include_in_schema=False)
+def serve_media(
+    filename: str,
+    request: Request,
+    exp: str | None = None,
+    sig: str | None = None,
+    db: Session = Depends(get_db),
+):
+    try:
+        path = safe_media_path(filename)
+    except ValueError:
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    if not path.is_file():
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+
+    if verify_media_signature(filename, exp, sig):
+        return FileResponse(path)
+
+    try:
+        user = get_current_user(request, db)
+    except HTTPException:
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    owned = (
+        db.query(MediaFile)
+        .filter(MediaFile.filename == filename, MediaFile.user_id == user.id)
+        .first()
+    )
+    if not owned:
+        # Legacy files uploaded before ownership records existed: fall back
+        # to "referenced by one of this user's posts".
+        owned = (
+            db.query(Post)
+            .join(Profile, Post.profile_id == Profile.id)
+            .filter(Profile.user_id == user.id, Post.media_paths.contains(filename))
+            .first()
+        )
+    if not owned:
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=300"})
 
 # Single-container deployment: serve the built frontend if configured.
 if FRONTEND_DIST and Path(FRONTEND_DIST).is_dir():

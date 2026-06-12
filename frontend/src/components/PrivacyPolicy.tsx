@@ -51,7 +51,9 @@ export default function PrivacyPolicy() {
               </li>
               <li>
                 <strong>Your posts</strong> (text and media) — so we can publish them at the
-                scheduled time. Post text is encrypted at rest. Posts stay until you delete
+                scheduled time. Post text is encrypted at rest. Media is never publicly
+                reachable before a post actually publishes (platforms that fetch media by
+                URL get a link that expires within the hour). Posts stay until you delete
                 them; deleting a post also deletes its media files from our server.
               </li>
               <li>

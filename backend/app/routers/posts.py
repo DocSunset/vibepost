@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import MAX_UPLOAD_BYTES, UPLOADS_DIR
 from ..database import get_db
 from ..media import ALLOWED_EXTENSIONS, is_valid_media_name, safe_media_path
-from ..models import Channel, Post, PostChannel, Profile, User
+from ..models import Channel, MediaFile, Post, PostChannel, Profile, User
 from ..ownership import owned_post, owned_profile
 from ..scheduler import cancel_post, publish_post, schedule_post
 from ..schemas import PostCreate, PostRead, PostUpdate
@@ -65,7 +65,11 @@ def _as_utc(dt: datetime | None) -> datetime | None:
 
 
 @router.post("/upload")
-async def upload_media(file: UploadFile = File(...), user: User = Depends(get_current_user)):
+async def upload_media(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     upload_limiter.check_key(f"user:{user.id}")
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -84,6 +88,10 @@ async def upload_media(file: UploadFile = File(...), user: User = Depends(get_cu
     if ext in IMAGE_EXTENSIONS and not _is_valid_image(dest):
         dest.unlink(missing_ok=True)
         raise HTTPException(400, "File is not a valid image")
+    # Ownership record: /media serves this file only to this user's session
+    # (or to a signed URL minted at publish time).
+    db.add(MediaFile(user_id=user.id, filename=filename))
+    db.commit()
     return {"filename": filename}
 
 
@@ -97,14 +105,6 @@ def _is_valid_image(path) -> bool:
         return True
     except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
         return False
-
-
-@router.get("/media/{filename}")
-def serve_media(filename: str, user: User = Depends(get_current_user)):
-    path = (UPLOADS_DIR / filename).resolve()
-    if not path.is_relative_to(UPLOADS_DIR.resolve()) or not path.is_file():
-        raise HTTPException(404, "File not found")
-    return FileResponse(path)
 
 
 @router.get("/", response_model=list[PostRead])
@@ -209,10 +209,13 @@ def publish_now(post_id: int, user: User = Depends(get_current_user), db: Sessio
 def delete_post(post_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     post = owned_post(db, user, post_id)
     cancel_post(post_id)
-    for filename in json.loads(post.media_paths or "[]"):
+    filenames = json.loads(post.media_paths or "[]")
+    for filename in filenames:
         path = (UPLOADS_DIR / filename).resolve()
         if path.is_relative_to(UPLOADS_DIR.resolve()) and path.is_file():
             path.unlink(missing_ok=True)
+    if filenames:
+        db.query(MediaFile).filter(MediaFile.filename.in_(filenames)).delete(synchronize_session=False)
     db.delete(post)
     db.commit()
     return {"ok": True}

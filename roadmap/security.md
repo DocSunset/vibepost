@@ -29,8 +29,10 @@ Things we are responsible for protecting, and how.
 >   audit) gates CI on every PR and runs weekly.
 > - **Isolation is application-level ownership checks** (every query joins
 >   through the requesting user), not database RLS.
-> - **Media is public-but-unguessable** (`/media/<uuid>`), not private R2 with
->   presigned URLs — see `media-privacy.md` for the target and the beta note.
+> - **Media is private by default** — served only to the owner's session or
+>   to a ≤60-min HMAC-signed URL minted at publish time (our own
+>   presigned-URL equivalent, no R2 needed) — see `media-privacy.md`. Media
+>   file bytes on the volume are not yet encrypted at rest (`backlog.md`).
 >
 > See `docs/launch-guide.md` for the accepted-limitations list shown to the
 > operator.

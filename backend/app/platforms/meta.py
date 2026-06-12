@@ -17,7 +17,7 @@
 import httpx
 import json
 from urllib.parse import urlencode
-from ..media import safe_media_path
+from ..media import safe_media_path, signed_media_url
 
 GRAPH = "https://graph.facebook.com/v19.0"
 THREADS_GRAPH = "https://graph.threads.net/v1.0"
@@ -146,7 +146,7 @@ def post_to_instagram(credentials: dict, text: str, media_paths: list[str], publ
             raise Exception("Instagram requires at least one image or video")
 
         if len(media_paths) == 1:
-            image_url = f"{public_base_url.rstrip('/')}/media/{media_paths[0]}"
+            image_url = signed_media_url(public_base_url, media_paths[0])
             r = c.post(f"{GRAPH}/{ig_user_id}/media", data={
                 "image_url": image_url,
                 "caption": text,
@@ -157,7 +157,7 @@ def post_to_instagram(credentials: dict, text: str, media_paths: list[str], publ
         else:
             children = []
             for filename in media_paths[:10]:
-                image_url = f"{public_base_url.rstrip('/')}/media/{filename}"
+                image_url = signed_media_url(public_base_url, filename)
                 r = c.post(f"{GRAPH}/{ig_user_id}/media", data={
                     "image_url": image_url,
                     "is_carousel_item": "true",
@@ -189,7 +189,7 @@ def post_to_threads(credentials: dict, text: str, media_paths: list[str], public
 
     with httpx.Client() as c:
         if media_paths:
-            image_url = f"{public_base_url.rstrip('/')}/media/{media_paths[0]}"
+            image_url = signed_media_url(public_base_url, media_paths[0])
             r = c.post(f"{THREADS_GRAPH}/{threads_user_id}/threads", data={
                 "media_type": "IMAGE",
                 "image_url": image_url,

@@ -196,11 +196,13 @@ From `roadmap/privacy.md`, adapted to the beta architecture:
 
 ## Known beta limitations (accepted, documented)
 
-- **Media URLs are public-but-unguessable** (`/media/<uuid>`): Instagram and
-  Threads require fetching media from a public URL, so media of *scheduled*
-  posts is reachable by anyone holding the exact URL until the post is
-  deleted. UUID filenames make guessing infeasible. The post-beta R2 +
-  presigned-URL design (`roadmap/media-privacy.md`) closes this.
+- **Media is private until publish**: `/media/<uuid>` serves a file only to
+  its owner's session or to a short-lived signed URL minted at publish time
+  for Instagram/Threads (other platforms get bytes directly). A published
+  post's media is briefly fetchable (≤60 min) via that signed URL; an
+  unpublished or cancelled post's media is never publicly reachable. Media
+  *files* on the volume are not yet encrypted at rest (see
+  `roadmap/backlog.md`).
 - **Sign-in is only as strong as the user's mailbox** (true of any service
   with email-based recovery): magic links are single-use, expire in 15
   minutes, are stored only as hashes, and require a button click on the

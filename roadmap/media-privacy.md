@@ -1,11 +1,17 @@
 # Media Privacy: No Public Exposure Until Posting
 
-> **Implementation status (closed beta, June 2026):** the beta does *not* yet
-> implement this design. Uploaded media is served from `/media/<uuid4>.<ext>`
-> on the app's own domain — publicly reachable by anyone holding the exact
-> URL (required so Instagram/Threads can fetch it), but with unguessable
-> names, and deleted when the post or account is deleted. The R2 + presigned
-> URL design below is the post-beta target.
+> **Implementation status (closed beta, June 2026): the requirement is MET**,
+> implemented on our own server rather than R2. Media is private by default:
+> `/media/<uuid4>.<ext>` serves a file only to its owner's authenticated
+> session, or to a short-lived HMAC-signed URL (60 min TTL) minted only at
+> publish time for Instagram/Threads — the same presigned-URL idea as below,
+> signed with a key derived from `CREDENTIALS_KEY` (see `app/media.py`).
+> Facebook, Bluesky, and LinkedIn receive bytes directly and never need a
+> URL. Until a post publishes, its media has never been publicly reachable;
+> a cancelled post's media never gets a URL at all. The R2 design below
+> remains the scalability target, no longer a security gap. Remaining gap:
+> media *files* on the volume are not encrypted at rest (chunked AEAD —
+> folded into the Vault/KMS work, `backlog.md` #1).
 
 ## Requirement
 

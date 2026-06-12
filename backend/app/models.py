@@ -61,6 +61,19 @@ class User(Base):
     settings = relationship("UserSetting", back_populates="user", cascade="all, delete-orphan")
     passkeys = relationship("WebAuthnCredential", back_populates="user", cascade="all, delete-orphan")
     login_tokens = relationship("LoginToken", back_populates="user", cascade="all, delete-orphan")
+    media_files = relationship("MediaFile", back_populates="user", cascade="all, delete-orphan")
+
+
+class MediaFile(Base):
+    """Ownership record for an uploaded file, so /media can serve it to its
+    owner's session (and to no one else without a signed URL)."""
+    __tablename__ = "media_files"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    filename = Column(String, unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="media_files")
 
 
 class LoginToken(Base):
