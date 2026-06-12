@@ -11,6 +11,6 @@ APScheduler==3.11.2
 python-dotenv==1.2.2
 aiofiles==25.1.0
 pillow==12.2.0
-bcrypt==5.0.0
 PyJWT==2.13.0
 webauthn==2.7.1
+cryptography==46.0.7

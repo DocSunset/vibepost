@@ -6,19 +6,27 @@ Things we are responsible for protecting, and how.
 > the *target* architecture (Supabase Auth + Vault, R2, RLS). The shipped
 > closed beta differs, and an honest threat model has to say so:
 >
-> - **Platform credentials are plaintext JSON in SQLite** on the Fly volume,
->   not in Vault. A database dump *does* yield live tokens. Mitigations in the
->   beta: per-user API isolation, non-root container, strict validation of
->   every file path that reaches `open()`, no credential ever serialized to
->   the client, logs, or exports. Vault (or app-level encryption) is required
->   before widening access beyond trusted beta users.
-> - **App auth is passwordless and self-contained** (no Supabase): emailed
->   single-use sign-in links (Resend, 15-min expiry, hashed at rest) and
->   WebAuthn passkeys via py_webauthn; an optional bcrypt password remains as
->   a legacy fallback. Sessions are JWTs in httpOnly `SameSite=Lax` cookies
->   with a per-user epoch so password changes revoke all outstanding
->   sessions. Admin is granted only via the server-console CLI, never by
->   signup order.
+> - **Everything sensitive is encrypted at rest** (app-level AES-256-GCM,
+>   `app/crypto.py`): platform credentials, user settings, post text, and
+>   emails (looked up via a keyed blind index). The key exists only in the
+>   `CREDENTIALS_KEY` environment secret; a database dump yields ciphertext.
+>   Key rotation is supported (`manage reencrypt`, see
+>   `docs/incident-runbook.md`). Remaining gap vs. Vault/KMS: an attacker
+>   with code execution on the live server also holds the key, and media
+>   files on the volume are not encrypted. Other mitigations: per-user API
+>   isolation, non-root container, strict validation of every file path that
+>   reaches `open()`, no credential ever serialized to the client, logs, or
+>   exports.
+> - **App auth is passwordless — there are no passwords at all** (no
+>   Supabase): WebAuthn passkeys via py_webauthn are the first-class method
+>   (non-passkey users are nudged each visit), with emailed single-use
+>   sign-in links (Resend, 15-min expiry, hashed at rest) as the fallback.
+>   Sessions are JWTs in httpOnly `SameSite=Lax` cookies with a per-user
+>   epoch ("sign out everywhere" in the UI; `manage revoke-sessions` for
+>   incident response). Admin is granted only via the server-console CLI,
+>   never by signup order.
+> - **Supply chain**: `scripts/supply-chain-audit.sh` (pip-audit + npm
+>   audit) gates CI on every PR and runs weekly.
 > - **Isolation is application-level ownership checks** (every query joins
 >   through the requesting user), not database RLS.
 > - **Media is public-but-unguessable** (`/media/<uuid>`), not private R2 with

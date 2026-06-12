@@ -16,20 +16,44 @@
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
+from sqlalchemy.types import TypeDecorator
 from datetime import datetime, timezone
 from .database import Base
+from . import crypto
+
+
+class EncryptedText(TypeDecorator):
+    """Column type that encrypts at rest (AES-256-GCM, see app/crypto.py).
+
+    Each column gets its own HKDF purpose so ciphertext cannot be replayed
+    across columns. Values are transparent to application code.
+    """
+    impl = Text
+    cache_ok = True
+
+    def __init__(self, purpose: str):
+        super().__init__()
+        self.purpose = purpose
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return crypto.encrypt(value, self.purpose)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return crypto.decrypt(value, self.purpose)
 
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, nullable=False, index=True)
-    # Empty string means no password: the account signs in via emailed link
-    # or passkey only. (Sentinel rather than NULL so existing rows need no
-    # schema migration; verify_password fails closed on "".)
-    password_hash = Column(String, nullable=False, default="")
+    # Encrypted at rest; lookups go through email_hash, a keyed blind index.
+    email = Column(EncryptedText("user.email"), nullable=False)
+    email_hash = Column(String, unique=True, nullable=False, index=True)
     is_admin = Column(Boolean, default=False, nullable=False)
-    # Bumped on password change to invalidate all outstanding sessions
+    # Bumped to invalidate all outstanding sessions ("log out everywhere")
     session_epoch = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -37,10 +61,6 @@ class User(Base):
     settings = relationship("UserSetting", back_populates="user", cascade="all, delete-orphan")
     passkeys = relationship("WebAuthnCredential", back_populates="user", cascade="all, delete-orphan")
     login_tokens = relationship("LoginToken", back_populates="user", cascade="all, delete-orphan")
-
-    @property
-    def has_password(self) -> bool:
-        return bool(self.password_hash)
 
 
 class LoginToken(Base):
@@ -94,7 +114,7 @@ class UserSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     key = Column(String, nullable=False)
-    value = Column(Text)
+    value = Column(EncryptedText("user_setting.value"))
 
     __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_setting"),)
 
@@ -122,7 +142,7 @@ class Channel(Base):
     platform = Column(String, nullable=False)  # instagram | facebook | bluesky | threads | linkedin
     display_name = Column(String, nullable=False)
     platform_user_id = Column(String)
-    credentials = Column(Text)  # JSON
+    credentials = Column(EncryptedText("channel.credentials"))  # JSON, encrypted at rest
     is_connected = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -134,7 +154,7 @@ class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True, index=True)
     profile_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
-    text = Column(Text, default="")
+    text = Column(EncryptedText("post.text"), default="")
     media_paths = Column(Text, default="[]")  # JSON array of filenames in uploads/
     scheduled_at = Column(DateTime, nullable=True)
     published_at = Column(DateTime, nullable=True)

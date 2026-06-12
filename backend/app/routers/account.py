@@ -22,14 +22,13 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
+from .. import crypto
 from ..config import FRONTEND_URL, INVITE_TTL_DAYS, LOGIN_LINK_TTL_SECONDS, UPLOADS_DIR
 from ..database import get_db
 from ..email import send_email
 from ..models import InviteToken, LoginToken, Post, Profile, User
 from ..schemas import (
-    ChangePasswordRequest,
     InviteCreateRequest,
-    LoginRequest,
     MagicLinkRequest,
     MagicLinkVerifyRequest,
     SignupRequest,
@@ -37,19 +36,26 @@ from ..schemas import (
 )
 from ..scheduler import cancel_post
 from ..security import (
-    MIN_PASSWORD_LENGTH,
     RateLimiter,
     clear_session_cookie,
     create_session_token,
     get_current_admin,
     get_current_user,
-    hash_password,
     hash_token,
     login_limiter,
     set_session_cookie,
     signup_limiter,
-    verify_password,
 )
+
+
+def _user_by_email(db: Session, email: str) -> User | None:
+    # Lookup via the keyed blind index; tries the previous key's index too
+    # so sign-in keeps working during a key rotation.
+    return (
+        db.query(User)
+        .filter(User.email_hash.in_(crypto.email_index_candidates(email)))
+        .first()
+    )
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -61,11 +67,6 @@ def _validate_email(email: str) -> str:
     if not EMAIL_RE.match(email):
         raise HTTPException(400, "Invalid email address")
     return email
-
-
-def _validate_password(password: str) -> None:
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(400, f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
 
 
 MAX_INVITE_FAILURES = 5
@@ -88,14 +89,11 @@ def _lookup_invite(db: Session, token: str, now: datetime) -> InviteToken:
 def signup(body: SignupRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     signup_limiter.check(request)
     email = _validate_email(body.email)
-    # Passwordless by default: accounts sign in via emailed link or passkey.
-    if body.password:
-        _validate_password(body.password)
 
     now = datetime.now(timezone.utc)
     invite = _lookup_invite(db, body.invite_code, now)
 
-    if db.query(User).filter(User.email == email).first():
+    if _user_by_email(db, email):
         # Burn the invite a little on every failure so a leaked code cannot
         # be replayed indefinitely to probe which emails are registered, and
         # keep the message vague for the same reason.
@@ -110,10 +108,7 @@ def signup(body: SignupRequest, request: Request, response: Response, db: Sessio
 
     # Admin rights are only ever granted from the server console
     # (`python -m app.manage promote <email>`), never by signup order.
-    user = User(
-        email=email,
-        password_hash=hash_password(body.password) if body.password else "",
-    )
+    user = User(email=email, email_hash=crypto.email_index(email))
     db.add(user)
     db.flush()
 
@@ -125,25 +120,6 @@ def signup(body: SignupRequest, request: Request, response: Response, db: Sessio
     set_session_cookie(response, create_session_token(user))
     return user
 
-
-@router.post("/login", response_model=UserRead)
-def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    login_limiter.check(request)
-    email = body.email.strip().lower()
-    user = db.query(User).filter(User.email == email).first()
-    # Verify against a dummy hash when the user doesn't exist so response
-    # timing doesn't reveal which emails are registered.
-    if not user:
-        verify_password(body.password, _DUMMY_HASH)
-        raise HTTPException(401, "Incorrect email or password")
-    if not verify_password(body.password, user.password_hash):
-        raise HTTPException(401, "Incorrect email or password")
-
-    set_session_cookie(response, create_session_token(user))
-    return user
-
-
-_DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
 # Per-email cap on sign-in links, independent of client IP, so a leaked email
 # address can't be used to flood someone's inbox from many sources.
@@ -158,7 +134,7 @@ def request_magic_link(body: MagicLinkRequest, request: Request, db: Session = D
     email = _validate_email(body.email)
     magic_link_email_limiter.check_key(f"email:{email}")
 
-    user = db.query(User).filter(User.email == email).first()
+    user = _user_by_email(db, email)
     if user:
         token = secrets.token_urlsafe(24)
         now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -218,23 +194,14 @@ def me(user: User = Depends(get_current_user)):
     return user
 
 
-@router.post("/change-password")
-def change_password(
-    body: ChangePasswordRequest,
-    request: Request,
+@router.post("/revoke-sessions")
+def revoke_sessions(
     response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    login_limiter.check(request)
-    # Passwordless accounts may set a password without a "current" one; the
-    # request is already authenticated by a session cookie.
-    if user.has_password and not verify_password(body.current_password, user.password_hash):
-        raise HTTPException(401, "Current password is incorrect")
-    _validate_password(body.new_password)
-    user.password_hash = hash_password(body.new_password)
-    # Revoke every outstanding session (stolen cookies included), then issue
-    # a fresh one so the user changing their password stays signed in.
+    """Invalidate every outstanding session (stolen cookies included), then
+    issue a fresh one so the caller stays signed in."""
     user.session_epoch = (user.session_epoch or 0) + 1
     db.commit()
     set_session_cookie(response, create_session_token(user))

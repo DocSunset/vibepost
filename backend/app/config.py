@@ -39,6 +39,22 @@ if not SECRET_KEY:
     # Ephemeral key for development — sessions reset on restart.
     SECRET_KEY = secrets.token_urlsafe(48)
 
+# Master key for encryption at rest (platform credentials, settings, post
+# text, emails). Lives only in the environment — never on the data volume —
+# so a copied database file is unreadable without it. See app/crypto.py.
+CREDENTIALS_KEY = os.environ.get("CREDENTIALS_KEY", "")
+# Previous key during rotation; decrypt-only. See docs/incident-runbook.md.
+CREDENTIALS_KEY_OLD = os.environ.get("CREDENTIALS_KEY_OLD", "")
+if not CREDENTIALS_KEY:
+    if IS_PROD:
+        sys.exit(
+            "FATAL: CREDENTIALS_KEY must be set in production. "
+            "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(48))'"
+        )
+    # Fixed development key: dev databases stay readable across restarts.
+    # Worthless as protection, which is fine — dev data is test data.
+    CREDENTIALS_KEY = "dev-credentials-key-not-secret"
+
 # Public base URL of the backend, used to build OAuth redirect URIs.
 OAUTH_CALLBACK_BASE = os.environ.get("OAUTH_CALLBACK_BASE", "http://localhost:8000")
 

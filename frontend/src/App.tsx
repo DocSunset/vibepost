@@ -22,6 +22,7 @@ import CalendarView from "./components/Calendar";
 import PostList from "./components/PostList";
 import Settings from "./components/Settings";
 import AuthScreen from "./components/AuthScreen";
+import PasskeyNudge from "./components/PasskeyNudge";
 import Onboarding from "./components/Onboarding";
 import PrivacyPolicy from "./components/PrivacyPolicy";
 
@@ -149,17 +150,21 @@ export default function App() {
 
   if (onboarding) {
     return (
-      <Onboarding
-        onDone={() => {
-          setOnboarding(false);
-          loadProfiles();
-        }}
-      />
+      <>
+        <PasskeyNudge />
+        <Onboarding
+          onDone={() => {
+            setOnboarding(false);
+            loadProfiles();
+          }}
+        />
+      </>
     );
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
+      <PasskeyNudge />
       {/* Sidebar */}
       <aside className="w-56 flex-shrink-0 bg-gray-900 flex flex-col">
         <div className="px-5 py-5 border-b border-gray-700">

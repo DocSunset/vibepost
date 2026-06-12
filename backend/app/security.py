@@ -19,7 +19,6 @@ import time
 import threading
 from datetime import datetime, timedelta, timezone
 
-import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -29,22 +28,6 @@ from .database import get_db
 from .models import User
 
 JWT_ALGORITHM = "HS256"
-
-MIN_PASSWORD_LENGTH = 10
-
-
-def hash_password(password: str) -> str:
-    # bcrypt operates on at most 72 bytes; pre-hash to support longer passphrases
-    digest = hashlib.sha256(password.encode("utf-8")).hexdigest().encode("ascii")
-    return bcrypt.hashpw(digest, bcrypt.gensalt()).decode("ascii")
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    digest = hashlib.sha256(password.encode("utf-8")).hexdigest().encode("ascii")
-    try:
-        return bcrypt.checkpw(digest, password_hash.encode("ascii"))
-    except ValueError:
-        return False
 
 
 def hash_token(token: str) -> str:

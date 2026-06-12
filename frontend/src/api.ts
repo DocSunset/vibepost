@@ -41,19 +41,14 @@ http.interceptors.response.use(
 export const api = {
   account: {
     me: () => http.get<User>("/account/me").then((r) => r.data),
-    signup: (invite_code: string, email: string, password?: string) =>
-      http
-        .post<User>("/account/signup", { invite_code, email, password: password || null })
-        .then((r) => r.data),
-    login: (email: string, password: string) =>
-      http.post<User>("/account/login", { email, password }).then((r) => r.data),
+    signup: (invite_code: string, email: string) =>
+      http.post<User>("/account/signup", { invite_code, email }).then((r) => r.data),
     requestMagicLink: (email: string) =>
       http.post<{ ok: boolean; message: string }>("/account/magic-link", { email }).then((r) => r.data),
     verifyMagicLink: (token: string) =>
       http.post<User>("/account/magic-link/verify", { token }).then((r) => r.data),
     logout: () => http.post("/account/logout"),
-    changePassword: (current_password: string, new_password: string) =>
-      http.post("/account/change-password", { current_password, new_password }),
+    revokeSessions: () => http.post("/account/revoke-sessions"),
     passkeys: {
       list: () => http.get<Passkey[]>("/account/passkeys").then((r) => r.data),
       registerOptions: () => http.post("/account/passkeys/register/options").then((r) => r.data),

@@ -34,25 +34,25 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 <strong>Email address</strong> — to send you single-use sign-in links and to
-                contact you about failures or security issues. Sign-in emails go through our
-                email provider (Resend); we send nothing else. Never used for marketing, never
-                shared, never sold.
+                contact you about failures or security issues. Encrypted at rest. Sign-in
+                emails go through our email provider (Resend); we send nothing else. Never
+                used for marketing, never shared, never sold.
               </li>
               <li>
-                <strong>Passkey public keys, and a password hash if you choose to set a
-                password</strong> — to sign you in. A passkey's private key never leaves your
-                device; we only ever hold the public half, which is useless to anyone else.
+                <strong>Passkey public keys</strong> — to sign you in. There are no passwords.
+                A passkey's private key never leaves your device; we only ever hold the public
+                half, which is useless to anyone else.
               </li>
               <li>
                 <strong>Social platform credentials</strong> (OAuth tokens, Bluesky app
-                passwords) — to post on your behalf. We request only posting permissions, not
-                your followers, messages, or analytics. Deleted immediately when you disconnect
-                a channel or delete your account.
+                passwords) — to post on your behalf. Encrypted at rest. We request only
+                posting permissions, not your followers, messages, or analytics. Deleted
+                immediately when you disconnect a channel or delete your account.
               </li>
               <li>
                 <strong>Your posts</strong> (text and media) — so we can publish them at the
-                scheduled time. They stay until you delete them; deleting a post also deletes
-                its media files from our server.
+                scheduled time. Post text is encrypted at rest. Posts stay until you delete
+                them; deleting a post also deletes its media files from our server.
               </li>
               <li>
                 <strong>Server logs</strong> (IP address, request path, timestamp) — for

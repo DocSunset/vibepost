@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import { useState } from "react";
-import { startAuthentication } from "@simplewebauthn/browser";
+import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { api } from "../api";
 import type { User } from "../types";
 
@@ -32,13 +32,12 @@ function pendingLoginToken(): string | null {
 export default function AuthScreen({ onAuthed }: Props) {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [usePassword, setUsePassword] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
   const [loginToken] = useState<string | null>(pendingLoginToken);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passkeysAvailable = browserSupportsWebAuthn();
 
   const finish = (user: User, isNew: boolean) => {
     // Drop any ?login_token= from the address bar before entering the app
@@ -84,14 +83,6 @@ export default function AuthScreen({ onAuthed }: Props) {
       finish(user, false);
     });
 
-  const passwordSignIn = (e: React.FormEvent) => {
-    e.preventDefault();
-    run(async () => {
-      const user = await api.account.login(email, password);
-      finish(user, false);
-    });
-  };
-
   const signup = (e: React.FormEvent) => {
     e.preventDefault();
     run(async () => {
@@ -102,6 +93,10 @@ export default function AuthScreen({ onAuthed }: Props) {
 
   const inputClass =
     "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500";
+  const primaryButton =
+    "w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors";
+  const secondaryButton =
+    "w-full py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 transition-colors";
 
   // Arrived via an emailed sign-in link: confirm with a click rather than
   // signing in automatically, so an email scanner that opens the URL
@@ -115,11 +110,7 @@ export default function AuthScreen({ onAuthed }: Props) {
             You followed a sign-in link from your email. One more click and you're in.
           </p>
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
-          <button
-            onClick={completeLinkSignIn}
-            disabled={busy}
-            className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
-          >
+          <button onClick={completeLinkSignIn} disabled={busy} className={primaryButton}>
             {busy ? "One moment…" : "Sign in to vibepost"}
           </button>
           <button
@@ -147,7 +138,7 @@ export default function AuthScreen({ onAuthed }: Props) {
             onClick={() => setLinkSent(false)}
             className="mt-6 text-xs text-gray-400 hover:text-gray-600 underline"
           >
-            Use a different method
+            Back
           </button>
         </div>
       </Shell>
@@ -173,7 +164,22 @@ export default function AuthScreen({ onAuthed }: Props) {
 
         {mode === "login" ? (
           <>
-            <form onSubmit={usePassword ? passwordSignIn : sendLink} className="space-y-4">
+            {passkeysAvailable && (
+              <>
+                <button onClick={passkeySignIn} disabled={busy} className={primaryButton}>
+                  🔑 Sign in with a passkey
+                </button>
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-[11px] text-gray-400 uppercase tracking-wide">
+                    or get a link by email
+                  </span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+              </>
+            )}
+
+            <form onSubmit={sendLink} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
                 <input
@@ -187,52 +193,16 @@ export default function AuthScreen({ onAuthed }: Props) {
                 />
               </div>
 
-              {usePassword && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••"
-                    required
-                    autoComplete="current-password"
-                    className={inputClass}
-                  />
-                </div>
-              )}
-
               {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                className={passkeysAvailable ? secondaryButton : primaryButton}
               >
-                {busy ? "One moment…" : usePassword ? "Sign in" : "Email me a sign-in link"}
+                {busy ? "One moment…" : "Email me a sign-in link"}
               </button>
             </form>
-
-            <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="text-[11px] text-gray-400 uppercase tracking-wide">or</span>
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
-
-            <button
-              onClick={passkeySignIn}
-              disabled={busy}
-              className="w-full py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              🔑 Sign in with a passkey
-            </button>
-
-            <button
-              onClick={() => { setUsePassword(!usePassword); setError(null); }}
-              className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 underline"
-            >
-              {usePassword ? "Email me a sign-in link instead" : "Use a password instead"}
-            </button>
           </>
         ) : (
           <>
@@ -265,20 +235,16 @@ export default function AuthScreen({ onAuthed }: Props) {
                   className={inputClass}
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
-                  No password needed — you'll sign in with a link sent to this address, or add
-                  a passkey later. Email is used only for signing in and to tell you if a
-                  scheduled post fails. Never for marketing. See our{" "}
-                  <a href="/privacy" className="underline">privacy policy</a>.
+                  There are no passwords. You'll sign in with a passkey (recommended) or a
+                  link sent to this address. Email is used only for signing in and to tell
+                  you if a scheduled post fails — never for marketing, and it's encrypted at
+                  rest. See our <a href="/privacy" className="underline">privacy policy</a>.
                 </p>
               </div>
 
               {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full py-2.5 bg-brand-600 text-white rounded-lg text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
-              >
+              <button type="submit" disabled={busy} className={primaryButton}>
                 {busy ? "One moment…" : "Create account"}
               </button>
             </form>

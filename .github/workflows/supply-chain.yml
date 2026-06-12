@@ -1,0 +1,36 @@
+# vibepost - social media scheduling and posting tool
+# Copyright (C) 2026  Travis West
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Keeps the supply chain boring: every PR, every push to main, and every
+# Monday morning, all pinned dependencies are checked against vulnerability
+# databases. A red run means: bump the pin (or consciously accept and
+# document) before deploying.
+
+name: supply-chain
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Install frontend deps (for npm audit metadata)
+        run: cd frontend && npm ci
+      - name: Run the audit
+        run: ./scripts/supply-chain-audit.sh

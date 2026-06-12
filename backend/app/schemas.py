@@ -99,19 +99,6 @@ class AppSettingUpdate(BaseModel):
 class SignupRequest(BaseModel):
     invite_code: str
     email: str
-    # Optional: accounts default to passwordless (email link / passkey).
-    password: Optional[str] = None
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class ChangePasswordRequest(BaseModel):
-    # Empty when the account has no password yet (setting one for the first time).
-    current_password: str = ""
-    new_password: str
 
 
 class MagicLinkRequest(BaseModel):
@@ -145,7 +132,6 @@ class UserRead(BaseModel):
     id: int
     email: str
     is_admin: bool
-    has_password: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}

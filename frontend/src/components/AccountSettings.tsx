@@ -27,12 +27,6 @@ interface Props {
 }
 
 export default function AccountSettings({ user, onLoggedOut, onError, onSuccess }: Props) {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [changing, setChanging] = useState(false);
-  const [hasPassword, setHasPassword] = useState(user.has_password);
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-
   // Passkeys
   const [passkeys, setPasskeys] = useState<Passkey[]>([]);
   const [addingPasskey, setAddingPasskey] = useState(false);
@@ -49,19 +43,13 @@ export default function AccountSettings({ user, onLoggedOut, onError, onSuccess 
     api.account.passkeys.list().then(setPasskeys).catch(() => {});
   }, [user.is_admin]);
 
-  const changePassword = async () => {
-    setChanging(true);
+  const revokeSessions = async () => {
+    if (!confirm("Sign out everywhere? Every other device and browser will need to sign in again. You stay signed in here.")) return;
     try {
-      await api.account.changePassword(currentPassword, newPassword);
-      setCurrentPassword("");
-      setNewPassword("");
-      setHasPassword(true);
-      setShowPasswordForm(false);
-      onSuccess(hasPassword ? "Password changed" : "Password set");
-    } catch (e: any) {
-      onError(e.response?.data?.detail || "Could not change password");
-    } finally {
-      setChanging(false);
+      await api.account.revokeSessions();
+      onSuccess("All other sessions signed out");
+    } catch {
+      onError("Could not revoke sessions");
     }
   };
 
@@ -201,50 +189,13 @@ export default function AccountSettings({ user, onLoggedOut, onError, onSuccess 
           </div>
 
           <div className="pt-2 border-t border-gray-100">
-            {!showPasswordForm ? (
-              <p className="text-xs text-gray-400">
-                {hasPassword ? "This account has a password. " : "This account has no password — sign-in is by email link or passkey. "}
-                <button
-                  onClick={() => setShowPasswordForm(true)}
-                  className="underline hover:text-gray-600"
-                >
-                  {hasPassword ? "Change it" : "Set one anyway"}
-                </button>
-              </p>
-            ) : (
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">
-                  {hasPassword ? "Change password" : "Set a password"}
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  {hasPassword && (
-                    <input
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="Current password"
-                      autoComplete="current-password"
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                  )}
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="New password (10+ chars)"
-                    autoComplete="new-password"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[160px] focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                  <button
-                    onClick={changePassword}
-                    disabled={changing || (hasPassword && !currentPassword) || newPassword.length < 10}
-                    className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
-                  >
-                    {hasPassword ? "Change" : "Set password"}
-                  </button>
-                </div>
-              </div>
-            )}
+            <p className="text-xs text-gray-400">
+              There are no passwords — sign-in is by passkey or emailed link.{" "}
+              <button onClick={revokeSessions} className="underline hover:text-gray-600">
+                Sign out everywhere
+              </button>{" "}
+              if you think a session may have been stolen.
+            </p>
           </div>
 
           <div className="flex items-center gap-4 pt-2 border-t border-gray-100">

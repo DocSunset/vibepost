@@ -14,14 +14,15 @@ respect for user privacy.
 > **Implementation status (closed beta, June 2026).** The inventory below
 > describes the target architecture. The shipped beta differs in several
 > ways, all reflected in the served privacy policy (`/privacy`):
-> auth is passwordless (emailed sign-in links via Resend + WebAuthn
-> passkeys, optional password) handled by us rather than Supabase, so email
-> and passkey public keys live in our own SQLite tables; Resend is an
-> additional processor (email address + sign-in mail only); all data is on
-> a Fly.io volume (SQLite + local uploads) instead of Supabase/R2; platform
-> credentials are stored unencrypted (see `security.md` status note); and
+> auth is passwordless — passkeys first, emailed sign-in links via Resend
+> as fallback, no passwords exist — handled by us rather than Supabase, so
+> emails and passkey public keys live in our own SQLite tables; Resend is
+> an additional processor (email address + sign-in mail only); all data is
+> on a Fly.io volume (SQLite + local uploads) instead of Supabase/R2; and
 > posts are retained until the user deletes them rather than auto-deleted
-> on publish. The deletion cascade, JSON export, and
+> on publish. Emails, platform credentials, settings, and post text are
+> encrypted at rest (AES-256-GCM, key held only as a Fly secret — see
+> `security.md` status note). The deletion cascade, JSON export, and
 > disconnect-deletes-credential behaviours ARE implemented and tested.
 
 ---

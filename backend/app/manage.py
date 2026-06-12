@@ -24,7 +24,9 @@ Usage (from the backend/ directory, or inside the container):
     python -m app.manage users
     python -m app.manage promote <email>      # grant admin (the only way to get admin)
     python -m app.manage demote <email>       # remove admin
+    python -m app.manage revoke-sessions <email> # force-sign-out a user everywhere
     python -m app.manage claim-orphans <email># attach pre-auth profiles to a user
+    python -m app.manage reencrypt            # rotate CREDENTIALS_KEY (see incident runbook)
 """
 
 import argparse
@@ -37,9 +39,18 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+from . import crypto  # noqa: E402
 from .database import SessionLocal, engine, Base, run_migrations  # noqa: E402
-from .models import InviteToken, Profile, User  # noqa: E402
+from .models import Channel, InviteToken, Post, Profile, User, UserSetting  # noqa: E402
 from .security import hash_token  # noqa: E402
+
+
+def _user_by_email(db, email: str) -> User | None:
+    return (
+        db.query(User)
+        .filter(User.email_hash.in_(crypto.email_index_candidates(email)))
+        .first()
+    )
 
 
 def main():
@@ -63,8 +74,17 @@ def main():
     promote.add_argument("email")
     demote = sub.add_parser("demote", help="remove admin from a user")
     demote.add_argument("email")
+    revoke_sessions = sub.add_parser(
+        "revoke-sessions", help="force-sign-out a user everywhere (hijack response)"
+    )
+    revoke_sessions.add_argument("email")
     claim = sub.add_parser("claim-orphans", help="attach profiles with no owner to a user")
     claim.add_argument("email")
+    sub.add_parser(
+        "reencrypt",
+        help="re-encrypt all data with the current CREDENTIALS_KEY "
+             "(set CREDENTIALS_KEY_OLD to the previous key first)",
+    )
 
     args = parser.parse_args()
     db = SessionLocal()
@@ -95,26 +115,58 @@ def main():
                 role = "admin" if u.is_admin else "user"
                 print(f"  #{u.id}  {u.email}  ({role}, since {u.created_at:%Y-%m-%d})")
         elif args.cmd == "promote":
-            u = db.query(User).filter(User.email == args.email.strip().lower()).first()
+            u = _user_by_email(db, args.email)
             if not u:
                 sys.exit(f"No user with email {args.email}")
             u.is_admin = True
             db.commit()
             print(f"{u.email} is now an admin")
         elif args.cmd == "demote":
-            u = db.query(User).filter(User.email == args.email.strip().lower()).first()
+            u = _user_by_email(db, args.email)
             if not u:
                 sys.exit(f"No user with email {args.email}")
             u.is_admin = False
             db.commit()
             print(f"{u.email} is no longer an admin")
+        elif args.cmd == "revoke-sessions":
+            u = _user_by_email(db, args.email)
+            if not u:
+                sys.exit(f"No user with email {args.email}")
+            u.session_epoch = (u.session_epoch or 0) + 1
+            db.commit()
+            print(f"All sessions for {u.email} are now invalid")
         elif args.cmd == "claim-orphans":
-            u = db.query(User).filter(User.email == args.email.strip().lower()).first()
+            u = _user_by_email(db, args.email)
             if not u:
                 sys.exit(f"No user with email {args.email}")
             n = db.query(Profile).filter(Profile.user_id.is_(None)).update({Profile.user_id: u.id})
             db.commit()
             print(f"Attached {n} orphaned profile(s) to {u.email}")
+        elif args.cmd == "reencrypt":
+            # The ORM decrypts on load (old key via CREDENTIALS_KEY_OLD) and
+            # encrypts on write (current key); flag_modified forces the write
+            # even though the plaintext value is unchanged.
+            from sqlalchemy.orm.attributes import flag_modified
+            count = 0
+            for u in db.query(User).all():
+                u.email_hash = crypto.email_index(u.email)
+                flag_modified(u, "email")
+                count += 1
+            for s in db.query(UserSetting).all():
+                if s.value is not None:
+                    flag_modified(s, "value")
+                    count += 1
+            for c in db.query(Channel).all():
+                if c.credentials is not None:
+                    flag_modified(c, "credentials")
+                    count += 1
+            for p in db.query(Post).all():
+                if p.text is not None:
+                    flag_modified(p, "text")
+                    count += 1
+            db.commit()
+            print(f"Re-encrypted {count} values with the current CREDENTIALS_KEY.")
+            print("You can now unset CREDENTIALS_KEY_OLD.")
     finally:
         db.close()
 
